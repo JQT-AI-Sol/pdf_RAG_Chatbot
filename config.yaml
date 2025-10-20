@@ -1,0 +1,117 @@
+# OpenAI設定
+openai:
+  model_chat: "gpt-5-mini"  # GPT-5-miniを使用（速度重視）
+  model_embedding: "text-embedding-3-large"  # より高性能なembedding
+  # temperature: 1  # GPT-5系はデフォルト値(1)のみサポート（パラメータ指定不要）
+  max_tokens: 16000  # max_completion_tokensとして使用（推論トークン+回答用）
+
+# ChromaDB設定
+chromadb:
+  persist_directory: "./data/chroma_db"
+  collection_name_text: "pdf_text_chunks"
+  collection_name_images: "pdf_image_contents"
+
+# PDF処理設定
+pdf_processing:
+  chunk_size: 800
+  chunk_overlap: 150
+  max_files: 5
+  extract_images: true
+  min_image_size: 100  # 最小画像サイズ（px）
+  image_crop_margin: 150  # 画像切り取り時のマージン（px）- グラフの切れを防ぐ
+
+  # 表の処理設定
+  extract_tables_as_markdown: true  # 表をMarkdown形式で抽出
+  table_classification: true  # シンプル/複雑を自動分類
+  complex_table_threshold: 20  # 20セル以上または結合セルありで複雑と判定（Vision AI使用）
+
+  # グラフの処理設定
+  detect_charts: true  # グラフの自動検出
+  save_charts_as_images: true  # グラフを画像として保存
+
+  # コンテキスト設定
+  include_surrounding_context: true  # 前後の文脈を含める
+  context_lines_before: 3  # 前の文脈の行数
+  context_lines_after: 2  # 後の文脈の行数
+
+# Vision設定
+vision:
+  max_image_size: 2000  # ピクセル
+  image_format: "PNG"
+  enable_caching: true  # 同じ画像の再処理を避ける
+
+  # Vision AI使用範囲（GPT-5対応）
+  use_for_charts_only: true  # グラフのみVision使用（推奨）
+  use_for_complex_tables: true  # 複雑な表もVision使用
+  use_for_simple_tables: false  # シンプルな表はMarkdown化のみ
+  analysis_prompt_table: |
+    あなたは技術文書の表を解析する専門家です。
+    以下の画像は技術マニュアルに含まれる表です。
+
+    以下の情報を抽出してください：
+
+    1. **表の構造**
+       - 行数と列数
+       - ヘッダー行の内容
+       - 表のタイトル（あれば）
+
+    2. **表の内容**
+       - 各セルの主要なデータ
+       - 数値データがあれば具体的な値
+       - 単位があれば記載
+
+    3. **表の意味**
+       - この表が示している情報は何か
+       - 主要なデータポイントや傾向
+
+    検索可能なテキスト形式で出力してください。
+
+  analysis_prompt_graph: |
+    あなたは技術文書のグラフを解析する専門家です。
+    以下の画像は技術マニュアルに含まれるグラフです。
+
+    以下の情報を抽出してください：
+
+    1. **グラフの種類**
+       - 折れ線グラフ、棒グラフ、円グラフ、散布図など
+
+    2. **視覚的な特徴**
+       - データの傾向（増加、減少、一定など）
+       - 特異点や注目すべきポイント
+
+    3. **数値データ（重要）**
+       - X軸とY軸のラベル・単位
+       - グラフ内の具体的なデータポイント（可能な限り）
+       - 凡例の内容
+       - グラフタイトル
+
+    4. **主要な洞察**
+       - このグラフから読み取れる重要な情報
+
+    JSON形式で構造化して出力してください：
+    {
+      "graph_type": "...",
+      "title": "...",
+      "axes": {"x": "...", "y": "..."},
+      "data_points": [...],
+      "insights": "..."
+    }
+
+# 検索設定
+search:
+  top_k_text: 5
+  top_k_images: 10  # 画像検索数を増やして目的のグラフを含める確率を上げる
+  similarity_threshold: 0.7
+  enable_hybrid_search: true  # テキストと画像の統合検索
+  enable_category_filter: true  # カテゴリーフィルタリング有効化
+
+# カテゴリー設定
+category:
+  storage_file: "./data/categories.json"  # カテゴリー一覧保存先
+  allow_custom: true  # カスタムカテゴリー入力を許可
+
+# ログ設定
+logging:
+  level: "DEBUG"
+  file: "./logs/app.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

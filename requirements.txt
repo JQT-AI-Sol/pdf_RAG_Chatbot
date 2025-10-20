@@ -1,0 +1,21 @@
+# Streamlit UI
+streamlit>=1.32.0
+
+# LangChain & OpenAI
+langchain>=0.1.0
+langchain-openai>=0.0.5
+openai>=1.12.0
+
+# Vector Database
+chromadb>=0.4.22
+
+# PDF Processing
+pdfplumber>=0.10.3
+
+# Image Processing
+Pillow>=10.2.0
+
+# Utilities
+python-dotenv>=1.0.0
+tiktoken>=0.6.0
+PyYAML>=6.0.1
