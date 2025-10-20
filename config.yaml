@@ -33,7 +33,7 @@ pdf_processing:
   image_crop_margin: 150  # 画像切り取り時のマージン（px）- グラフの切れを防ぐ
 
   # 表の処理設定
-  extract_tables_as_markdown: true  # 表をMarkdown形式で抽出
+  extract_tables_as_markdown: true  # 表をMarkdown形式で抽出（並列処理で高速化）
   table_classification: true  # シンプル/複雑を自動分類
   complex_table_threshold: 20  # 20セル以上または結合セルありで複雑と判定（Vision AI使用）
 

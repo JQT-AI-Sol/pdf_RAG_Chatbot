@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple, Any
 from PIL import Image
 import io
 import tiktoken
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 logger = logging.getLogger(__name__)
@@ -36,9 +37,61 @@ class PDFProcessor:
             # モデル名が見つからない場合はcl100k_base（GPT-4系）を使用
             self.encoding = tiktoken.get_encoding("cl100k_base")
 
+    def _process_single_page(self, pdf_path: str, page_num: int, source_file: str, category: str) -> Dict[str, Any]:
+        """
+        単一ページを処理（並列処理用ヘルパー）
+
+        Args:
+            pdf_path: PDFファイルのパス
+            page_num: ページ番号（1-indexed）
+            source_file: ソースファイル名
+            category: カテゴリー
+
+        Returns:
+            dict: ページの処理結果
+        """
+        page_result = {
+            "text_chunks": [],
+            "images": [],
+            "table_markdowns": []
+        }
+
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                page = pdf.pages[page_num - 1]  # 0-indexed
+
+                # テキスト抽出
+                text = page.extract_text()
+                if text:
+                    page_result["text_chunks"].extend(
+                        self._create_text_chunks(text, page_num, source_file, category)
+                    )
+
+                # 画像と表を抽出
+                page_data = self._extract_images_from_page(page, page_num, pdf_path)
+
+                # 画像データを追加
+                page_result["images"].extend(page_data["images"])
+
+                # テーブルMarkdownを追加
+                for table_markdown in page_data["table_markdowns"]:
+                    page_result["table_markdowns"].append({
+                        "text": table_markdown["text"],
+                        "page_number": table_markdown["page_number"],
+                        "source_file": source_file,
+                        "category": category,
+                        "content_type": "table_markdown"
+                    })
+
+        except Exception as e:
+            logger.error(f"Error processing page {page_num}: {e}")
+            # ページ処理失敗時もエラーを投げずに空の結果を返す
+
+        return page_result
+
     def process_pdf(self, pdf_path: str, category: str) -> Dict[str, Any]:
         """
-        PDFを処理してテキストと画像を抽出
+        PDFを処理してテキストと画像を抽出（並列処理）
 
         Args:
             pdf_path: PDFファイルのパス
@@ -58,32 +111,41 @@ class PDFProcessor:
         }
 
         try:
+            # ページ数を取得
             with pdfplumber.open(pdf_path) as pdf:
-                result["metadata"]["page_count"] = len(pdf.pages)
+                page_count = len(pdf.pages)
+                result["metadata"]["page_count"] = page_count
 
-                for page_num, page in enumerate(pdf.pages, start=1):
-                    # テキスト抽出
-                    text = page.extract_text()
-                    if text:
-                        result["text_chunks"].extend(
-                            self._create_text_chunks(text, page_num, result["source_file"], category)
-                        )
+            # 並列処理のワーカー数を設定
+            max_workers = min(4, page_count)  # 最大4スレッド
+            logger.info(f"Processing {page_count} pages with {max_workers} workers")
 
-                    # 画像と表を抽出
-                    page_data = self._extract_images_from_page(page, page_num, pdf_path)
+            # ページを並列処理
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 各ページの処理をサブミット
+                futures = {
+                    executor.submit(self._process_single_page, pdf_path, page_num, result["source_file"], category): page_num
+                    for page_num in range(1, page_count + 1)
+                }
 
-                    # 画像データを追加
-                    result["images"].extend(page_data["images"])
+                # 結果を収集（ページ順序を保持）
+                page_results = {}
+                for future in as_completed(futures):
+                    page_num = futures[future]
+                    try:
+                        page_result = future.result()
+                        page_results[page_num] = page_result
+                        logger.info(f"Completed processing page {page_num}/{page_count}")
+                    except Exception as e:
+                        logger.error(f"Error in page {page_num}: {e}")
+                        page_results[page_num] = {"text_chunks": [], "images": [], "table_markdowns": []}
 
-                    # シンプルな表のMarkdownをテキストチャンクに追加
-                    for table_markdown in page_data["table_markdowns"]:
-                        result["text_chunks"].append({
-                            "text": table_markdown["text"],
-                            "page_number": table_markdown["page_number"],
-                            "source_file": result["source_file"],
-                            "category": category,
-                            "content_type": "table_markdown"
-                        })
+                # ページ順にソートして結果をマージ
+                for page_num in sorted(page_results.keys()):
+                    page_result = page_results[page_num]
+                    result["text_chunks"].extend(page_result["text_chunks"])
+                    result["images"].extend(page_result["images"])
+                    result["text_chunks"].extend(page_result["table_markdowns"])
 
             logger.info(f"Extracted {len(result['text_chunks'])} text chunks and {len(result['images'])} images")
 
