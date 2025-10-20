@@ -242,11 +242,12 @@ def process_pdfs(uploaded_files, category):
                 )
 
             # 4. 画像をVision AIで解析（並列処理）- 画像がある場合のみ
+            analyzed_images = []
+            failed_images = []
+
             if pdf_result['images']:
                 status_text.text(f"処理中: {uploaded_file.name} (4/{total_steps}) - 画像解析中（{num_images}枚）...")
                 max_workers = st.session_state.config.get('performance', {}).get('max_workers', 4)
-                analyzed_images = []
-                failed_images = []
 
                 # VisionAnalyzerインスタンスをローカル変数に保存（スレッドセーフ）
                 vision_analyzer = st.session_state.vision_analyzer
