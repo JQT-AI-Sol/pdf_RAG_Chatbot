@@ -62,6 +62,15 @@ def initialize_app():
             config
         )
         st.session_state.chat_history = []
+        st.session_state.selected_category = "全カテゴリー"
+        st.session_state.selected_model = "openai"
+
+        # Vision Analyzerの状態チェック
+        if not st.session_state.vision_analyzer.api_key_valid:
+            st.session_state.vision_disabled = True
+            logger.warning("Vision analysis is disabled due to missing or invalid GEMINI_API_KEY")
+        else:
+            st.session_state.vision_disabled = False
 
     return config
 
@@ -69,6 +78,14 @@ def initialize_app():
 def sidebar():
     """サイドバーのUI"""
     st.sidebar.title("📁 ドキュメント管理")
+
+    # Vision Analyzer警告表示
+    if st.session_state.get('vision_disabled', False):
+        st.sidebar.warning(
+            "⚠️ 画像解析機能が無効です\n\n"
+            "GEMINI_API_KEYが設定されていません。\n"
+            "画像やグラフの解析を有効にするには、.envファイルにGEMINI_API_KEYを設定してください。"
+        )
 
     # PDFアップロード
     st.sidebar.subheader("PDFアップロード")
@@ -134,6 +151,33 @@ def sidebar():
                         st.rerun()
     else:
         st.sidebar.info("登録済みPDFがありません")
+
+    # チャット設定
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🤖 チャット設定")
+
+    # カテゴリー選択
+    categories = ["全カテゴリー"] + st.session_state.category_manager.get_all_categories()
+    st.session_state.selected_category = st.sidebar.selectbox(
+        "🔍 検索対象カテゴリー",
+        categories,
+        index=categories.index(st.session_state.selected_category) if st.session_state.selected_category in categories else 0,
+        help="質問する対象のカテゴリーを選択してください"
+    )
+
+    # AIモデル選択
+    model_options = {
+        "GPT-4o-mini": "openai",
+        "Gemini-2.5-flash": "gemini"
+    }
+    current_model_display = [k for k, v in model_options.items() if v == st.session_state.selected_model][0]
+    selected_model_display = st.sidebar.selectbox(
+        "🤖 AIモデル",
+        list(model_options.keys()),
+        index=list(model_options.keys()).index(current_model_display),
+        help="使用するAIモデルを選択"
+    )
+    st.session_state.selected_model = model_options[selected_model_display]
 
     # チャットリセットボタン
     st.sidebar.markdown("---")
@@ -202,33 +246,75 @@ def process_pdfs(uploaded_files, category):
                 status_text.text(f"処理中: {uploaded_file.name} (4/{total_steps}) - 画像解析中（{num_images}枚）...")
                 max_workers = st.session_state.config.get('performance', {}).get('max_workers', 4)
                 analyzed_images = []
+                failed_images = []
+
+                # VisionAnalyzerインスタンスをローカル変数に保存（スレッドセーフ）
+                vision_analyzer = st.session_state.vision_analyzer
 
                 # 画像解析を並列処理
-                def analyze_single_image(image_data):
+                def analyze_single_image(image_data, analyzer):
                     try:
                         actual_content_type = image_data.get('content_type', 'image')
-                        analysis = st.session_state.vision_analyzer.analyze_image(
-                            image_data['image_path'],
+                        image_path = image_data['image_path']
+                        logging.info(f"Starting analysis for {actual_content_type}: {image_path}")
+
+                        analysis = analyzer.analyze_image(
+                            image_path,
                             content_type=actual_content_type
                         )
+
                         # メタデータを統合
                         image_data.update({
                             'category': category,
                             'content_type': analysis.get('content_type', 'image'),
                             'description': analysis['description']
                         })
-                        return image_data
+
+                        logging.info(f"Successfully analyzed {actual_content_type}: {image_path}")
+                        return {'success': True, 'data': image_data}
+
                     except Exception as e:
-                        logging.error(f"Error analyzing image: {e}")
-                        return None
+                        error_msg = f"画像解析失敗 ({image_data.get('image_path', 'unknown')}): {type(e).__name__}: {str(e)}"
+                        logging.error(error_msg, exc_info=True)
+                        return {
+                            'success': False,
+                            'data': image_data,
+                            'error': str(e),
+                            'error_type': type(e).__name__
+                        }
 
                 # ThreadPoolExecutorで並列処理
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(analyze_single_image, img): img for img in pdf_result['images']}
+                    futures = {executor.submit(analyze_single_image, img, vision_analyzer): img for img in pdf_result['images']}
                     for future in as_completed(futures):
                         result = future.result()
-                        if result:
-                            analyzed_images.append(result)
+                        if result['success']:
+                            analyzed_images.append(result['data'])
+                        else:
+                            failed_images.append(result)
+
+                # 解析結果の集計
+                success_count = len(analyzed_images)
+                failed_count = len(failed_images)
+
+                logging.info(f"Image analysis complete: {success_count} succeeded, {failed_count} failed")
+
+                # 失敗した画像がある場合、警告を表示
+                if failed_images:
+                    error_types = {}
+                    for failure in failed_images:
+                        error_type = failure.get('error_type', 'Unknown')
+                        error_types[error_type] = error_types.get(error_type, 0) + 1
+
+                    error_summary = ", ".join([f"{err_type}: {count}件" for err_type, count in error_types.items()])
+                    warning_msg = f"⚠️ 画像解析エラー: {failed_count}/{num_images}枚失敗 ({error_summary})"
+                    st.sidebar.warning(warning_msg)
+                    logging.warning(warning_msg)
+
+                    # 最初のエラーの詳細をログに出力
+                    if failed_images:
+                        first_error = failed_images[0]
+                        logging.error(f"First error details: {first_error.get('error')}")
 
                 # 解析結果をバッチでエンベディング
                 if analyzed_images:
@@ -237,9 +323,21 @@ def process_pdfs(uploaded_files, category):
 
                     # ベクトルストアにバッチで追加
                     st.session_state.vector_store.add_image_contents_batch(analyzed_images, image_embeddings)
+                    logging.info(f"Added {len(analyzed_images)} images to vector store")
+                else:
+                    # 全ての画像解析が失敗した場合
+                    error_msg = f"❌ 全ての画像解析が失敗しました ({num_images}枚)"
+                    st.sidebar.error(error_msg)
+                    logging.error(error_msg)
 
-            # 完了
-            status_text.text(f"処理中: {uploaded_file.name} ({total_steps}/{total_steps}) - 完了！")
+            # 完了メッセージの作成
+            completion_msg = f"✅ {uploaded_file.name}: テキスト {len(pdf_result['text_chunks'])}件"
+            if pdf_result['images']:
+                if analyzed_images:
+                    completion_msg += f", 画像 {len(analyzed_images)}/{num_images}件"
+                else:
+                    completion_msg += f", 画像 0/{num_images}件（全て失敗）"
+            status_text.text(completion_msg)
             progress_bar.progress((i + 1) / len(uploaded_files))
 
         except Exception as e:
@@ -335,134 +433,333 @@ def main_area():
     st.title("📚 PDF RAG System")
     st.markdown("---")
 
-    # カテゴリーとモデル選択を横並びに
-    col1, col2 = st.columns([2, 1])
+    # 使い方ガイド（折りたたみ可能）
+    # 登録済みPDFがない場合は自動展開
+    registered_pdfs = st.session_state.pdf_manager.get_registered_pdfs()
+    auto_expand = len(registered_pdfs) == 0
 
-    with col1:
-        categories = ["全カテゴリー"] + st.session_state.category_manager.get_all_categories()
-        selected_category = st.selectbox(
-            "🔍 検索対象カテゴリー",
-            categories,
-            help="質問する対象のカテゴリーを選択してください"
-        )
+    with st.expander("📖 使い方ガイド", expanded=auto_expand):
+        st.markdown("""
+        ### 基本的な使い方の流れ
 
-    with col2:
-        model_options = {
-            "GPT-4o-mini": "openai",
-            "Gemini-2.5-flash": "gemini"
+        このシステムは、PDFファイルをアップロードして質問に答えるRAG（Retrieval-Augmented Generation）システムです。
+
+        #### **Step 1: PDFのアップロード** 📁
+        - 左サイドバーの「PDFファイルを選択」から、PDF文書を1つまたは複数選択します
+        - 最大ファイルサイズ: 50MB/ファイル
+
+        #### **Step 2: カテゴリーの設定** 🏷️
+        - PDFを分類するためのカテゴリー名を入力します
+        - 例: 「製品マニュアル」「技術仕様書」「ユーザーガイド」など
+        - **同じカテゴリー名**を使うことで、複数のPDFをグループ化できます
+
+        #### **Step 3: インデックス作成** ⚙️
+        - 「📑 インデックス作成」ボタンをクリックします
+        - システムがPDFを解析し、テキスト・画像・グラフを抽出します
+        - **処理時間の目安**: 1ページあたり2-5秒（画像の数により変動）
+
+        #### **Step 4: 質問の入力** 💬
+        - サイドバーで「🔍 検索対象カテゴリー」と「🤖 AIモデル」を選択
+          - **検索対象カテゴリー**: 「全カテゴリー」またはドキュメント範囲を指定
+          - **GPT-4o-mini**: 汎用性が高く、安定した応答品質
+          - **Gemini-2.5-flash**: マルチモーダルに強く、画像・グラフの理解に優れる
+        - 最下部の入力欄に質問を入力してEnterキーまたは送信ボタンをクリック
+
+        #### **Step 5: 回答の確認** ✅
+        - AIが関連情報を元に回答を生成します
+        - 各回答の下に**参照元**が折りたたまれて表示されます
+        - 参照元を展開すると、回答の根拠となったPDFのページを確認できます
+
+        ---
+
+        ### 💡 使い方のコツ
+
+        - **カテゴリー分けの推奨**: 製品ごと、プロジェクトごとにカテゴリーを分けると検索精度が向上します
+        - **具体的な質問**: 「〇〇の仕様は？」「△△の手順を教えて」など具体的に質問すると良い結果が得られます
+        - **会話メモリ機能**: 前の質問を踏まえた追加質問が可能です。セッション中の全ての会話履歴を記憶して回答します
+
+        ---
+
+        ### ⚠️ 注意事項
+
+        - **データの永続化**: Streamlit Cloudでは、アプリ再起動時にアップロードしたデータは消去されます
+        - **API制限**: OpenAI/Gemini APIの利用制限にご注意ください
+        - **画像解析**: GEMINI_API_KEYが未設定の場合、画像解析機能は無効になります
+        """)
+
+    st.markdown("---")
+
+    # チャット履歴表示
+    for idx, chat in enumerate(st.session_state.chat_history):
+        with st.chat_message(chat["role"]):
+            st.markdown(chat["content"])
+
+            # アシスタントの回答の場合、参照元を表示
+            if chat["role"] == "assistant" and "sources" in chat and chat["sources"]:
+                sources = chat["sources"]
+                # sourcesは辞書形式 {"text": [...], "images": [...]}
+                text_sources = sources.get("text", [])
+                image_sources = sources.get("images", [])
+                total_sources = len(text_sources) + len(image_sources)
+
+                if total_sources > 0:
+                    with st.expander(f"📄 参照元 ({total_sources}件)"):
+                        source_idx = 1
+
+                        # テキスト参照元
+                        for result in text_sources:
+                            metadata = result.get("metadata", {})
+                            st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
+                            st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
+                            st.write(f"**タイプ**: テキスト")
+
+                            # PDF全体を閲覧ボタン
+                            source_file = metadata.get('source_file')
+                            if source_file:
+                                pdf_path = Path("data/uploaded_pdfs") / source_file
+                                if pdf_path.exists():
+                                    show_pdf_link(pdf_path, source_file, key_suffix=f"hist_{idx}_text_ref_{source_idx}")
+
+                                st.markdown("---")
+
+                                # 元のPDFページを表示
+                                if pdf_path.exists():
+                                    try:
+                                        import pdfplumber
+
+                                        page_number = metadata.get('page_number', 1)
+                                        with pdfplumber.open(str(pdf_path)) as pdf:
+                                            if page_number <= len(pdf.pages):
+                                                page = pdf.pages[page_number - 1]
+                                                page_img = page.to_image(resolution=150)
+                                                st.image(page_img.original, use_container_width=True)
+                                            else:
+                                                st.warning(f"ページ {page_number} が見つかりません")
+                                    except Exception as e:
+                                        st.error(f"PDFページの表示に失敗しました: {e}")
+
+                            if source_idx < total_sources:
+                                st.markdown("---")
+                            source_idx += 1
+
+                        # 画像参照元
+                        for result in image_sources:
+                            metadata = result.get("metadata", {})
+                            st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
+                            st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
+                            st.write(f"**タイプ**: {metadata.get('content_type', '画像')}")
+
+                            # PDF全体を閲覧ボタン
+                            source_file = metadata.get('source_file')
+                            if source_file:
+                                pdf_path = Path("data/uploaded_pdfs") / source_file
+                                if pdf_path.exists():
+                                    show_pdf_link(pdf_path, source_file, key_suffix=f"hist_{idx}_image_ref_{source_idx}")
+
+                                st.markdown("---")
+
+                                # 元のPDFページを表示
+                                if pdf_path.exists():
+                                    try:
+                                        import pdfplumber
+
+                                        page_number = metadata.get('page_number', 1)
+                                        with pdfplumber.open(str(pdf_path)) as pdf:
+                                            if page_number <= len(pdf.pages):
+                                                page = pdf.pages[page_number - 1]
+                                                page_img = page.to_image(resolution=150)
+                                                st.image(page_img.original, use_container_width=True)
+                                            else:
+                                                st.warning(f"ページ {page_number} が見つかりません")
+                                    except Exception as e:
+                                        st.error(f"PDFページの表示に失敗しました: {e}")
+
+                            if source_idx < total_sources:
+                                st.markdown("---")
+                            source_idx += 1
+
+    # チャット入力（最下部に固定）
+    if question := st.chat_input("💬 質問を入力してください（例: この製品の主な特徴は何ですか？）"):
+        # カテゴリーフィルター設定
+        category_filter = None if st.session_state.selected_category == "全カテゴリー" else st.session_state.selected_category
+
+        # モデル表示名を取得
+        model_display_names = {
+            "openai": "GPT-4o-mini",
+            "gemini": "Gemini-2.5-flash"
         }
-        selected_model_display = st.selectbox(
-            "🤖 AIモデル",
-            list(model_options.keys()),
-            help="使用するAIモデルを選択"
-        )
-        selected_model = model_options[selected_model_display]
+        current_model_display = model_display_names.get(st.session_state.selected_model, "GPT-4o-mini")
 
-    # 質問入力
-    question = st.text_input(
-        "💬 質問を入力してください",
-        placeholder="例: この製品の主な特徴は何ですか？"
-    )
+        try:
+            # ユーザーの質問を表示
+            with st.chat_message("user"):
+                st.markdown(question)
 
-    # 質問ボタン
-    if st.button("🔍 質問する", type="primary"):
-        if question:
-            # カテゴリーフィルター設定
-            category_filter = None if selected_category == "全カテゴリー" else selected_category
+            # チャット履歴にユーザーの質問を追加
+            st.session_state.chat_history.append({
+                "role": "user",
+                "content": question
+            })
 
-            try:
-                # チャット履歴にユーザーの質問を追加
-                st.session_state.chat_history.append({
-                    "role": "user",
-                    "content": question
-                })
-
-                # 回答生成（ストリーミング表示、失敗時は通常モードにフォールバック）
-                st.markdown("### 💬 回答")
+            # アシスタントの回答を表示
+            with st.chat_message("assistant"):
                 answer_placeholder = st.empty()
                 full_answer = ""
                 result_data = None
+                context_data = None
 
                 try:
                     # ストリーミング表示
-                    for chunk_data in st.session_state.rag_engine.query_stream(question, category_filter, model_type=selected_model):
-                        if chunk_data["type"] == "chunk":
+                    # 最後のユーザーメッセージを除いた履歴を渡す（現在の質問は含めない）
+                    chat_history_for_query = [msg for msg in st.session_state.chat_history[:-1]]
+
+                    for chunk_data in st.session_state.rag_engine.query_stream(
+                        question,
+                        category_filter,
+                        model_type=st.session_state.selected_model,
+                        chat_history=chat_history_for_query
+                    ):
+                        if chunk_data["type"] == "context":
+                            # コンテキスト情報を保存
+                            context_data = chunk_data
+                        elif chunk_data["type"] == "chunk":
                             full_answer += chunk_data["content"]
                             answer_placeholder.markdown(full_answer + "▌")  # カーソル表示
-                        elif chunk_data["type"] == "final":
-                            answer_placeholder.markdown(full_answer)
-                            result_data = chunk_data
+
+                    # ストリーミング完了後、最終的な回答を表示
+                    answer_placeholder.markdown(full_answer)
+
+                    # 結果データを構築
+                    if context_data:
+                        result_data = {
+                            "answer": full_answer,
+                            "sources": context_data.get("sources", {}),
+                            "context": context_data.get("context", ""),
+                            "images": context_data.get("images", [])
+                        }
+
                 except Exception as stream_error:
                     # ストリーミングエラー時は通常モードにフォールバック
                     if "stream" in str(stream_error).lower() or "unsupported_value" in str(stream_error).lower():
                         st.warning("⚠️ ストリーミングモードが利用できません。通常モードで回答を生成します...")
                         answer_placeholder.empty()
-                        with st.spinner(f"回答を生成中... ({selected_model_display})"):
-                            result_data = st.session_state.rag_engine.query(question, category_filter, model_type=selected_model)
+                        with st.spinner(f"回答を生成中... ({current_model_display})"):
+                            chat_history_for_query = [msg for msg in st.session_state.chat_history[:-1]]
+                            result_data = st.session_state.rag_engine.query(
+                                question,
+                                category_filter,
+                                model_type=st.session_state.selected_model,
+                                chat_history=chat_history_for_query
+                            )
                         answer_placeholder.markdown(result_data['answer'])
                     else:
                         raise stream_error
 
-                # 参照元表示
-                if result_data:
-                    st.markdown("### 📄 参照元")
-                    if result_data['sources']:
-                        for idx, source in enumerate(result_data['sources'], 1):
-                            with st.expander(f"参照 {idx}: {source['file']} (ページ {source['page']})"):
-                                st.write(f"**カテゴリー**: {source['category']}")
-                                st.write(f"**タイプ**: {source['type']}")
+                # 参照元を折りたたみ表示
+                if result_data and result_data.get('sources'):
+                    sources = result_data['sources']
+                    # sourcesは辞書形式 {"text": [...], "images": [...]}
+                    text_sources = sources.get("text", [])
+                    image_sources = sources.get("images", [])
+                    total_sources = len(text_sources) + len(image_sources)
+
+                    if total_sources > 0:
+                        with st.expander(f"📄 参照元 ({total_sources}件)"):
+                            source_idx = 1
+
+                            # テキスト参照元
+                            for result in text_sources:
+                                metadata = result.get("metadata", {})
+                                st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
+                                st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
+                                st.write(f"**タイプ**: テキスト")
 
                                 # PDF全体を閲覧ボタン
-                                pdf_path = Path("data/uploaded_pdfs") / source['file']
-                                if pdf_path.exists():
-                                    show_pdf_link(pdf_path, source['file'], key_suffix=f"ref_{idx}")
-                                else:
-                                    st.error(f"PDFファイルが見つかりません: {source['file']}")
+                                source_file = metadata.get('source_file')
+                                if source_file:
+                                    pdf_path = Path("data/uploaded_pdfs") / source_file
+                                    if pdf_path.exists():
+                                        show_pdf_link(pdf_path, source_file, key_suffix=f"new_text_ref_{source_idx}")
 
-                                st.markdown("---")
+                                    st.markdown("---")
 
-                                # 元のPDFページを表示
-                                pdf_path = Path("data/uploaded_pdfs") / source['file']
-                                if pdf_path.exists():
-                                    try:
-                                        import pdfplumber
-                                        from PIL import Image
-                                        import io
+                                    # 元のPDFページを表示
+                                    if pdf_path.exists():
+                                        try:
+                                            import pdfplumber
 
-                                        with pdfplumber.open(str(pdf_path)) as pdf:
-                                            if source['page'] <= len(pdf.pages):
-                                                page = pdf.pages[source['page'] - 1]
-                                                # ページを画像に変換
-                                                page_img = page.to_image(resolution=150)
-                                                st.image(page_img.original, use_container_width=True)
-                                            else:
-                                                st.warning(f"ページ {source['page']} が見つかりません")
-                                    except Exception as e:
-                                        st.error(f"PDFページの表示に失敗しました: {e}")
-                                else:
-                                    st.warning(f"PDF not found: {pdf_path}")
-                    else:
-                        st.info("参照元が見つかりませんでした")
+                                            page_number = metadata.get('page_number', 1)
+                                            with pdfplumber.open(str(pdf_path)) as pdf:
+                                                if page_number <= len(pdf.pages):
+                                                    page = pdf.pages[page_number - 1]
+                                                    page_img = page.to_image(resolution=150)
+                                                    st.image(page_img.original, use_container_width=True)
+                                                else:
+                                                    st.warning(f"ページ {page_number} が見つかりません")
+                                        except Exception as e:
+                                            st.error(f"PDFページの表示に失敗しました: {e}")
 
-                    # チャット履歴にアシスタントの回答を追加
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": result_data['answer']
-                    })
+                                if source_idx < total_sources:
+                                    st.markdown("---")
+                                source_idx += 1
 
-            except Exception as e:
-                st.error(f"エラーが発生しました: {str(e)}")
-                logging.error(f"Error during query: {e}", exc_info=True)
+                            # 画像参照元
+                            for result in image_sources:
+                                metadata = result.get("metadata", {})
+                                st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
+                                st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
+                                st.write(f"**タイプ**: {metadata.get('content_type', '画像')}")
 
-        else:
-            st.warning("質問を入力してください")
+                                # PDF全体を閲覧ボタン
+                                source_file = metadata.get('source_file')
+                                if source_file:
+                                    pdf_path = Path("data/uploaded_pdfs") / source_file
+                                    if pdf_path.exists():
+                                        show_pdf_link(pdf_path, source_file, key_suffix=f"new_image_ref_{source_idx}")
 
-    # チャット履歴表示
-    st.markdown("---")
-    st.subheader("💬 チャット履歴")
-    for chat in st.session_state.chat_history:
-        with st.chat_message(chat["role"]):
-            st.write(chat["content"])
+                                    st.markdown("---")
+
+                                    # 元のPDFページを表示
+                                    if pdf_path.exists():
+                                        try:
+                                            import pdfplumber
+
+                                            page_number = metadata.get('page_number', 1)
+                                            with pdfplumber.open(str(pdf_path)) as pdf:
+                                                if page_number <= len(pdf.pages):
+                                                    page = pdf.pages[page_number - 1]
+                                                    page_img = page.to_image(resolution=150)
+                                                    st.image(page_img.original, use_container_width=True)
+                                                else:
+                                                    st.warning(f"ページ {page_number} が見つかりません")
+                                        except Exception as e:
+                                            st.error(f"PDFページの表示に失敗しました: {e}")
+
+                                if source_idx < total_sources:
+                                    st.markdown("---")
+                                source_idx += 1
+
+            # チャット履歴にアシスタントの回答を追加（参照元も含む）
+            if result_data:
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": result_data['answer'],
+                    "sources": result_data.get('sources', [])
+                })
+
+                # 再描画して履歴を更新
+                st.rerun()
+            else:
+                st.error("回答の生成に失敗しました")
+                # ユーザーの質問を履歴から削除
+                st.session_state.chat_history.pop()
+
+        except Exception as e:
+            st.error(f"エラーが発生しました: {str(e)}")
+            logging.error(f"Error during query: {e}", exc_info=True)
+            # エラー時はユーザーの質問を履歴から削除
+            if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
+                st.session_state.chat_history.pop()
 
 
 def main():

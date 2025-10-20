@@ -57,6 +57,18 @@ class TextEmbedder:
             logger.error(f"Error generating embedding: {e}")
             raise
 
+    def embed_query(self, text: str) -> List[float]:
+        """
+        クエリをエンベディング（embed_textのエイリアス）
+
+        Args:
+            text: エンベディングするクエリテキスト
+
+        Returns:
+            list: エンベディングベクトル
+        """
+        return self.embed_text(text)
+
     def embed_batch(self, texts: List[str], batch_size: int = 100) -> List[List[float]]:
         """
         複数のテキストをバッチでエンベディング（真のバッチ処理）

@@ -142,3 +142,8 @@ logging:
 langfuse:
   enabled: true  # Langfuseトレーシングを有効化
   # LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST環境変数から読み込み
+
+# チャット設定
+chat:
+  max_history_messages: 10  # 履歴の最大メッセージ数（user+assistantの合計）
+  include_images_in_history: false  # 履歴に画像を含めるか（false推奨: トークン節約）
