@@ -3,6 +3,7 @@ Vector store module using ChromaDB
 """
 
 import logging
+import os
 from typing import List, Dict, Any, Optional
 import chromadb
 from chromadb.config import Settings
@@ -24,10 +25,23 @@ class VectorStore:
         self.config = config
         self.chroma_config = config.get('chromadb', {})
 
-        # ChromaDBクライアントの初期化
-        self.client = chromadb.PersistentClient(
-            path=self.chroma_config.get('persist_directory', './data/chroma_db')
+        # Streamlit Cloud環境を検出
+        is_streamlit_cloud = (
+            os.environ.get('STREAMLIT_RUNTIME_ENV') == 'cloud' or
+            os.path.exists('/mount/src') or
+            'STREAMLIT_SHARING_MODE' in os.environ
         )
+
+        # ChromaDBクライアントの初期化
+        if is_streamlit_cloud:
+            # Streamlit Cloudではメモリ内のEphemeralClientを使用
+            logger.warning("Running on Streamlit Cloud - using EphemeralClient (data will not persist)")
+            self.client = chromadb.EphemeralClient()
+        else:
+            # ローカル環境ではPersistentClientを使用
+            self.client = chromadb.PersistentClient(
+                path=self.chroma_config.get('persist_directory', './data/chroma_db')
+            )
 
         # コレクション名
         self.text_collection_name = self.chroma_config.get('collection_name_text', 'pdf_text_chunks')
