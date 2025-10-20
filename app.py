@@ -403,25 +403,50 @@ def confirm_delete_dialog():
 
 
 def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
-    """PDFを新しいタブで開くリンクを表示（アイコンのみ）"""
-    # 静的ファイルのURLを生成
-    pdf_url = f"/app/static/pdfs/{target_file}"
+    """PDFを新しいタブで開くリンクまたはダウンロードボタンを表示"""
+    import os
 
-    # アイコンのみのリンクを表示（ホバー時に説明文表示）
-    st.markdown(
-        f'<a href="{pdf_url}" target="_blank" title="PDFを閲覧する" style="'
-        f'display: inline-block; '
-        f'width: 100%; '
-        f'padding: 0.5rem 1rem; '
-        f'background-color: #ff4b4b; '
-        f'color: white; '
-        f'text-align: center; '
-        f'text-decoration: none; '
-        f'border-radius: 0.5rem; '
-        f'font-size: 1.2rem; '
-        f'">📖</a>',
-        unsafe_allow_html=True
+    # Streamlit Cloud環境を検出
+    is_streamlit_cloud = (
+        os.environ.get('STREAMLIT_RUNTIME_ENV') == 'cloud' or
+        os.path.exists('/mount/src') or
+        'STREAMLIT_SHARING_MODE' in os.environ
     )
+
+    if is_streamlit_cloud:
+        # Streamlit Cloudではダウンロードボタンを表示
+        if pdf_path.exists():
+            with open(pdf_path, "rb") as pdf_file:
+                pdf_bytes = pdf_file.read()
+                st.download_button(
+                    label="📖 PDFをダウンロード",
+                    data=pdf_bytes,
+                    file_name=target_file,
+                    mime="application/pdf",
+                    key=f"download_pdf_{key_suffix}",
+                    use_container_width=True
+                )
+        else:
+            st.error(f"PDFファイルが見つかりません: {target_file}")
+    else:
+        # ローカル環境ではリンクを表示
+        pdf_url = f"/app/static/pdfs/{target_file}"
+
+        # アイコンのみのリンクを表示（ホバー時に説明文表示）
+        st.markdown(
+            f'<a href="{pdf_url}" target="_blank" title="PDFを閲覧する" style="'
+            f'display: inline-block; '
+            f'width: 100%; '
+            f'padding: 0.5rem 1rem; '
+            f'background-color: #ff4b4b; '
+            f'color: white; '
+            f'text-align: center; '
+            f'text-decoration: none; '
+            f'border-radius: 0.5rem; '
+            f'font-size: 1.2rem; '
+            f'">📖</a>',
+            unsafe_allow_html=True
+        )
 
 
 def main_area():
