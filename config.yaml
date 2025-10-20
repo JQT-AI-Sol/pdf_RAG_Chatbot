@@ -129,8 +129,8 @@ category:
 
 # パフォーマンス設定
 performance:
-  max_workers: 4  # 並列処理のワーカー数（画像解析用、Streamlit Cloudでは1に制限）
-  embedding_batch_size: 20  # エンベディングバッチサイズ（メモリ節約のため削減）
+  max_workers: 4  # 並列処理のワーカー数（画像解析用）
+  embedding_batch_size: 100  # エンベディングバッチサイズ
 
 # ログ設定
 logging:

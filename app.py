@@ -220,7 +220,15 @@ def process_pdfs(uploaded_files, category):
 
             # 2. テキスト・画像抽出
             status_text.text(f"処理中: {uploaded_file.name} (2/?) - テキスト・画像抽出中...")
-            pdf_result = st.session_state.pdf_processor.process_pdf(str(pdf_path), category)
+            try:
+                logging.info(f"Starting PDF processing for {uploaded_file.name}")
+                pdf_result = st.session_state.pdf_processor.process_pdf(str(pdf_path), category)
+                logging.info(f"PDF processing completed for {uploaded_file.name}: {len(pdf_result.get('text_chunks', []))} text chunks, {len(pdf_result.get('images', []))} images")
+            except Exception as e:
+                error_msg = f"PDF処理中にエラーが発生しました: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                st.sidebar.error(error_msg)
+                continue
 
             # 総ステップ数を決定（画像があれば5、なければ4）
             total_steps = 5 if pdf_result['images'] else 4
@@ -247,19 +255,7 @@ def process_pdfs(uploaded_files, category):
 
             if pdf_result['images']:
                 status_text.text(f"処理中: {uploaded_file.name} (4/{total_steps}) - 画像解析中（{num_images}枚）...")
-
-                # Streamlit Cloud環境を検出してワーカー数を調整（メモリ節約）
-                is_streamlit_cloud = (
-                    os.environ.get('STREAMLIT_RUNTIME_ENV') == 'cloud' or
-                    os.path.exists('/mount/src') or
-                    'STREAMLIT_SHARING_MODE' in os.environ
-                )
-                default_workers = 1 if is_streamlit_cloud else 4
-                max_workers = st.session_state.config.get('performance', {}).get('max_workers', default_workers)
-
-                if is_streamlit_cloud and max_workers > 1:
-                    max_workers = 1  # Streamlit Cloudでは強制的に1に制限
-                    logging.info("Streamlit Cloud detected: limiting max_workers to 1 to conserve memory")
+                max_workers = st.session_state.config.get('performance', {}).get('max_workers', 4)
 
                 # VisionAnalyzerインスタンスをローカル変数に保存（スレッドセーフ）
                 vision_analyzer = st.session_state.vision_analyzer
