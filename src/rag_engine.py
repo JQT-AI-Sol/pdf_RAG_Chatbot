@@ -327,7 +327,7 @@ class RAGEngine:
         }
         model = genai.GenerativeModel(
             model_name=self.gemini_model_name,
-            system_instruction="あなたは技術文書を理解する専門家アシスタントです。コンテキスト情報に基づいて正確に回答してください。",
+            system_instruction="あなたは業務マニュアルを理解する専門家アシスタントです。コンテキスト情報に基づいて正確に回答してください。",
         )
         response = model.generate_content(content_parts, generation_config=generation_config)
 
@@ -384,27 +384,6 @@ class RAGEngine:
                 yield {"type": "chunk", "content": chunk.text}
 
         logger.info(f"Gemini streaming response completed. Generated answer length: {len(full_answer)} characters")
-
-        # Langfuse Generation トレース（ストリーミング完了後）
-        if trace:
-            try:
-                trace.generation(
-                    name="gemini_streaming_completion",
-                    model=self.gemini_model_name,
-                    input=prompt,
-                    output=full_answer,
-                    metadata={
-                        "image_count": len(content_parts) - 1,
-                        "image_paths": image_paths if len(image_paths) <= 5 else image_paths[:5] + ["..."],
-                        "provider": "google",
-                        "temperature": generation_config["temperature"],
-                        "max_tokens": generation_config["max_output_tokens"],
-                        "streaming": True,
-                    },
-                )
-                logger.info(f"Langfuse trace generation recorded for Gemini streaming")
-            except Exception as e:
-                logger.error(f"Failed to record Langfuse trace: {e}")
 
         # 最終結果をyield
         yield {

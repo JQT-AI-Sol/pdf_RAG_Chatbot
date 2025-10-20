@@ -51,6 +51,13 @@ data/extracted_images/
 data/chroma_db/
 data/categories.json
 
+# Static files (uploaded PDFs)
+static/pdfs/
+
+# Temporary files
+nul
+=*
+
 # Streamlit
 .streamlit/
 
