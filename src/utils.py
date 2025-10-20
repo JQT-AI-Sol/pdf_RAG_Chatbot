@@ -4,6 +4,7 @@ Utility functions for the PDF RAG system
 
 import logging
 import yaml
+import base64
 from pathlib import Path
 from typing import Dict, Any
 from dotenv import load_dotenv
@@ -64,3 +65,22 @@ def ensure_directories():
 
     for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
+
+
+def encode_pdf_to_base64(pdf_path: str) -> str:
+    """
+    PDFファイルをbase64エンコード
+
+    Args:
+        pdf_path: PDFファイルのパス
+
+    Returns:
+        str: base64エンコードされた文字列
+    """
+    try:
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+        return base64.b64encode(pdf_bytes).decode('utf-8')
+    except Exception as e:
+        logging.error(f"Error encoding PDF to base64: {e}")
+        raise

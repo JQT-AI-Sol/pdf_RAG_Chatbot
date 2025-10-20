@@ -1,15 +1,27 @@
 # OpenAI設定
 openai:
-  model_chat: "gpt-5-mini"  # GPT-5-miniを使用（速度重視）
+  model_chat: "gpt-4o-mini"  # GPT-4o-miniを使用（ストリーミング対応）
   model_embedding: "text-embedding-3-large"  # より高性能なembedding
-  # temperature: 1  # GPT-5系はデフォルト値(1)のみサポート（パラメータ指定不要）
+  temperature: 0.7  # GPT-5系はデフォルト値(1)のみサポート（パラメータ指定不要）
   max_tokens: 16000  # max_completion_tokensとして使用（推論トークン+回答用）
+
+# Gemini設定
+gemini:
+  model_chat: "gemini-2.5-flash"  # チャット用モデル
+  model_vision: "gemini-2.5-flash"  # 画像解析用モデル
+  max_tokens: 8192  # 最大出力トークン数
+  temperature: 0.7  # 温度パラメータ
+  # GEMINI_API_KEY環境変数から読み込み
 
 # ChromaDB設定
 chromadb:
   persist_directory: "./data/chroma_db"
   collection_name_text: "pdf_text_chunks"
   collection_name_images: "pdf_image_contents"
+
+# PDFアップロード設定
+pdf_upload:
+  max_file_size_mb: 50  # 最大ファイルサイズ（MB）
 
 # PDF処理設定
 pdf_processing:
@@ -24,6 +36,11 @@ pdf_processing:
   extract_tables_as_markdown: true  # 表をMarkdown形式で抽出
   table_classification: true  # シンプル/複雑を自動分類
   complex_table_threshold: 20  # 20セル以上または結合セルありで複雑と判定（Vision AI使用）
+
+  # 表検出の最適化設定（速度重視）
+  table_detection_strategy: "fast"  # "fast" or "accurate" (デフォルト: fast)
+  # fastモード: 精度を少し犠牲にして高速化（処理時間: 2-3秒/ページ）
+  # accurateモード: 高精度だが低速（処理時間: 8-10秒/ページ）
 
   # グラフの処理設定
   detect_charts: true  # グラフの自動検出
@@ -110,8 +127,18 @@ category:
   storage_file: "./data/categories.json"  # カテゴリー一覧保存先
   allow_custom: true  # カスタムカテゴリー入力を許可
 
+# パフォーマンス設定
+performance:
+  max_workers: 4  # 並列処理のワーカー数（画像解析用）
+  embedding_batch_size: 100  # エンベディングバッチサイズ
+
 # ログ設定
 logging:
-  level: "DEBUG"
+  level: "INFO"  # DEBUG → INFO に変更（処理速度向上）
   file: "./logs/app.log"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Langfuse設定
+langfuse:
+  enabled: true  # Langfuseトレーシングを有効化
+  # LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST環境変数から読み込み

@@ -7,15 +7,27 @@ import os
 import base64
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
-from openai import OpenAI
+from openai import OpenAI as OpenAIClient
+import google.generativeai as genai
+from PIL import Image
 from .prompt_templates import get_rag_prompt
-
 
 logger = logging.getLogger(__name__)
 
+# Langfuse統合
+try:
+    from langfuse.openai import OpenAI
+    from langfuse import observe
+
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    OpenAI = OpenAIClient
+    LANGFUSE_AVAILABLE = False
+    # logger.warning()はこの時点ではまだloggerが設定されていない可能性があるため削除
+
 
 class RAGEngine:
-    """RAGエンジン - 検索と回答生成を統合"""
+    """RAGエンジン - 検索と回答生成を統合（OpenAI & Gemini対応）"""
 
     def __init__(self, config: dict, vector_store, embedder):
         """
@@ -31,10 +43,32 @@ class RAGEngine:
         self.embedder = embedder
 
         self.openai_config = config.get("openai", {})
+        self.gemini_config = config.get("gemini", {})
         self.search_config = config.get("search", {})
+        self.langfuse_config = config.get("langfuse", {})
 
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model = self.openai_config.get("model_chat", "gpt-5")
+        # Langfuse有効化チェック
+        langfuse_available = LANGFUSE_AVAILABLE
+        config_enabled = self.langfuse_config.get("enabled", True)
+        has_public_key = bool(os.getenv("LANGFUSE_PUBLIC_KEY"))
+        has_secret_key = bool(os.getenv("LANGFUSE_SECRET_KEY"))
+
+        self.langfuse_enabled = langfuse_available and config_enabled and has_public_key and has_secret_key
+
+        if self.langfuse_enabled:
+            logger.info("Langfuse tracing enabled")
+        else:
+            logger.info(
+                f"Langfuse tracing disabled (available={langfuse_available}, config={config_enabled}, public_key={has_public_key}, secret_key={has_secret_key})"
+            )
+
+        # OpenAI初期化（Langfuseラッパー使用）
+        self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.openai_model = self.openai_config.get("model_chat", "gpt-5")
+
+        # Gemini初期化
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        self.gemini_model_name = self.gemini_config.get("model_chat", "gemini-2.5-flash")
 
     def _encode_image_to_base64(self, image_path: str) -> str:
         """
@@ -53,18 +87,22 @@ class RAGEngine:
             logger.error(f"Error encoding image {image_path}: {e}")
             raise
 
-    def query(self, question: str, category: Optional[str] = None) -> Dict[str, Any]:
+    def query(self, question: str, category: Optional[str] = None, model_type: str = "openai") -> Dict[str, Any]:
         """
         質問に対して回答を生成
 
         Args:
             question: ユーザーの質問
             category: 検索対象カテゴリー（Noneの場合は全カテゴリー）
+            model_type: 使用するモデル ("openai" or "gemini")
 
         Returns:
             dict: 回答と参照元情報
         """
-        logger.info(f"Processing query: {question} (category: {category})")
+        logger.info(f"Processing query: {question} (category: {category}, model: {model_type})")
+
+        # Note: Langfuse tracing is automatically handled by the OpenAI wrapper (langfuse.openai.OpenAI)
+        # when LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables are set.
 
         try:
             # 1. 質問をエンベディング化
@@ -74,7 +112,7 @@ class RAGEngine:
             search_results = self.vector_store.search(
                 query_embedding=query_embedding,
                 category=category,
-                top_k=self.search_config.get("top_k_images", 10),  # 画像も含むためtop_k_imagesを使用
+                top_k=self.search_config.get("top_k_images", 10),
                 search_type="both",
             )
 
@@ -84,66 +122,21 @@ class RAGEngine:
             # 4. プロンプトを生成
             prompt = get_rag_prompt(question, context)
 
-            # 5. マルチモーダルコンテンツを構築（テキスト + 画像）
-            content = [{"type": "text", "text": prompt}]
-
-            # 検索結果から画像を追加
-            image_count = 0
-            logger.debug(f"Number of image results: {len(search_results.get('images', []))}")
-            for idx, result in enumerate(search_results.get("images", [])):
+            # 5. 検索結果から画像パスを抽出
+            image_paths = []
+            for result in search_results.get("images", []):
                 metadata = result.get("metadata", {})
                 image_path = metadata.get("image_path")
-                logger.debug(f"Image {idx}: path={image_path}, exists={Path(image_path).exists() if image_path else False}")
-
                 if image_path and Path(image_path).exists():
-                    try:
-                        logger.debug(f"Adding image to prompt: {image_path}")
-                        image_base64 = self._encode_image_to_base64(image_path)
-                        content.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
-                        })
-                        image_count += 1
-                        logger.debug(f"Successfully added image {idx} (total: {image_count})")
-                    except Exception as e:
-                        logger.warning(f"Failed to encode image {image_path}: {e}")
-                elif image_path:
-                    logger.warning(f"Image path does not exist: {image_path}")
-                else:
-                    logger.warning(f"Image {idx} has no image_path in metadata")
+                    image_paths.append(image_path)
 
-            # 6. LLMで回答生成
-            logger.info(f"Sending prompt to LLM (text: {len(prompt)} chars, images: {image_count})")
-            logger.debug(f"Prompt preview: {prompt[:500]}...")
-            logger.debug(f"Content structure: {len(content)} parts - {[c['type'] for c in content]}")
+            # 6. モデルに応じて回答生成
+            if model_type == "gemini":
+                answer = self._generate_answer_gemini(prompt, image_paths)
+            else:  # デフォルトはOpenAI
+                answer = self._generate_answer_openai(prompt, image_paths)
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "あなたは技術文書を理解する専門家アシスタントです。"},
-                    {"role": "user", "content": content},
-                ],
-                max_completion_tokens=self.openai_config.get("max_tokens", 16000),
-            )
-
-            logger.info(f"LLM response received. Model used: {response.model}")
-            logger.info(f"Finish reason: {response.choices[0].finish_reason}")
-
-            answer = response.choices[0].message.content
-
-            # レスポンス全体をログに出力（デバッグ用）
-            if not answer or len(answer) == 0:
-                logger.error(f"Empty answer! Response object: {response}")
-                logger.error(f"Message content type: {type(answer)}, value: {repr(answer)}")
-
-            # デバッグ: 回答内容を確認
-            logger.info(f"Generated answer length: {len(answer) if answer else 0} characters")
-            if answer:
-                logger.info(f"Answer preview: {answer[:200]}...")
-            else:
-                logger.warning("Answer is empty!")
-
-            # 6. 結果をフォーマット
+            # 7. 結果をフォーマット
             result = {
                 "answer": answer,
                 "sources": self._extract_sources(search_results),
@@ -157,18 +150,21 @@ class RAGEngine:
             logger.error(f"Error processing query: {e}")
             raise
 
-    def query_stream(self, question: str, category: Optional[str] = None):
+    def query_stream(self, question: str, category: Optional[str] = None, model_type: str = "openai"):
         """
         質問に対して回答をストリーミング生成
 
         Args:
             question: ユーザーの質問
             category: 検索対象カテゴリー（Noneの場合は全カテゴリー）
+            model_type: 使用するモデル ("openai" or "gemini")
 
         Yields:
             dict: ストリーミングチャンクまたは最終結果
         """
-        logger.info(f"Processing streaming query: {question} (category: {category})")
+        logger.info(f"Processing streaming query: {question} (category: {category}, model: {model_type})")
+
+        # Note: Langfuse tracing is handled by @observe decorators on _generate_answer_gemini and _stream_gemini
 
         try:
             # 1. 質問をエンベディング化
@@ -188,61 +184,235 @@ class RAGEngine:
             # 4. プロンプトを生成
             prompt = get_rag_prompt(question, context)
 
-            # 5. マルチモーダルコンテンツを構築（テキスト + 画像）
-            content = [{"type": "text", "text": prompt}]
-
-            # 検索結果から画像を追加
-            image_count = 0
+            # 5. 検索結果から画像パスを抽出
+            image_paths = []
             for result in search_results.get("images", []):
                 metadata = result.get("metadata", {})
                 image_path = metadata.get("image_path")
-
                 if image_path and Path(image_path).exists():
+                    image_paths.append(image_path)
+
+            # 6. モデルに応じてストリーミング回答生成
+            if model_type == "gemini":
+                # Geminiストリーミング
+                yield from self._stream_gemini(prompt, image_paths, search_results)
+            else:
+                # OpenAI用マルチモーダルコンテンツを構築（テキスト + 画像）
+                content = [{"type": "text", "text": prompt}]
+
+                # 画像を追加
+                image_count = 0
+                for image_path in image_paths:
                     try:
                         logger.debug(f"Adding image to streaming prompt: {image_path}")
                         image_base64 = self._encode_image_to_base64(image_path)
-                        content.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
-                        })
+                        content.append(
+                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
+                        )
                         image_count += 1
                     except Exception as e:
                         logger.warning(f"Failed to encode image {image_path}: {e}")
 
-            logger.info(f"Sending streaming prompt to LLM (text: {len(prompt)} chars, images: {image_count})")
+                # OpenAIストリーミング
+                logger.info(f"Sending streaming prompt to OpenAI (text: {len(prompt)} chars, images: {image_count})")
 
-            # 6. LLMでストリーミング回答生成
-            stream = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "あなたは技術文書を理解する専門家アシスタントです。"},
-                    {"role": "user", "content": content},
-                ],
-                max_completion_tokens=self.openai_config.get("max_tokens", 16000),
-                stream=True,
-            )
+                stream = self.openai_client.chat.completions.create(
+                    model=self.openai_model,
+                    messages=[
+                        {"role": "system", "content": "あなたは技術文書を理解する専門家アシスタントです。"},
+                        {"role": "user", "content": content},
+                    ],
+                    max_completion_tokens=self.openai_config.get("max_tokens", 16000),
+                    stream=True,
+                )
 
-            # 6. ストリーミングチャンクをyield
-            full_answer = ""
-            for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    content = chunk.choices[0].delta.content
-                    full_answer += content
-                    yield {"type": "chunk", "content": content}
+                # ストリーミングチャンクをyield
+                full_answer = ""
+                for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        chunk_content = chunk.choices[0].delta.content
+                        full_answer += chunk_content
+                        yield {"type": "chunk", "content": chunk_content}
 
-            # 7. 最終結果をyield
-            yield {
-                "type": "final",
-                "answer": full_answer,
-                "sources": self._extract_sources(search_results),
-                "search_results": search_results,
-            }
+                # 最終結果をyield
+                yield {
+                    "type": "final",
+                    "answer": full_answer,
+                    "sources": self._extract_sources(search_results),
+                    "search_results": search_results,
+                }
 
             logger.info("Streaming query processed successfully")
 
         except Exception as e:
             logger.error(f"Error processing streaming query: {e}")
             raise
+
+    def _generate_answer_openai(self, prompt: str, image_paths: List[str]) -> str:
+        """
+        OpenAI APIで回答を生成
+
+        Args:
+            prompt: プロンプトテキスト
+            image_paths: 画像パスのリスト
+
+        Returns:
+            str: 生成された回答
+        """
+        # マルチモーダルコンテンツを構築
+        content = [{"type": "text", "text": prompt}]
+
+        # 画像を追加
+        for image_path in image_paths:
+            if Path(image_path).exists():
+                try:
+                    image_base64 = self._encode_image_to_base64(image_path)
+                    content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}})
+                except Exception as e:
+                    logger.warning(f"Failed to encode image {image_path}: {e}")
+
+        logger.info(
+            f"Sending prompt to OpenAI (text: {len(prompt)} chars, images: {len([c for c in content if c['type'] == 'image_url'])})"
+        )
+
+        # OpenAI API呼び出し
+        response = self.openai_client.chat.completions.create(
+            model=self.openai_model,
+            messages=[
+                {"role": "system", "content": "あなたは技術文書を理解する専門家アシスタントです。"},
+                {"role": "user", "content": content},
+            ],
+            max_completion_tokens=self.openai_config.get("max_tokens", 16000),
+        )
+
+        logger.info(
+            f"OpenAI response received. Model: {response.model}, Finish reason: {response.choices[0].finish_reason}"
+        )
+
+        answer = response.choices[0].message.content
+        logger.info(f"Generated answer length: {len(answer) if answer else 0} characters")
+
+        return answer
+
+    @observe(name="gemini_generation", as_type="generation")
+    def _generate_answer_gemini(self, prompt: str, image_paths: List[str]) -> str:
+        """
+        Gemini APIで回答を生成
+
+        Args:
+            prompt: プロンプトテキスト
+            image_paths: 画像パスのリスト
+
+        Returns:
+            str: 生成された回答
+        """
+        # マルチモーダルコンテンツを構築
+        content_parts = [prompt]
+
+        # 画像を追加
+        for image_path in image_paths:
+            if Path(image_path).exists():
+                try:
+                    img = Image.open(image_path)
+                    content_parts.append(img)
+                except Exception as e:
+                    logger.warning(f"Failed to load image {image_path}: {e}")
+
+        logger.info(f"Sending prompt to Gemini (text: {len(prompt)} chars, images: {len(content_parts) - 1})")
+
+        # Gemini API呼び出し
+        generation_config = {
+            "max_output_tokens": self.gemini_config.get("max_tokens", 8192),
+            "temperature": self.gemini_config.get("temperature", 1.0),
+        }
+        model = genai.GenerativeModel(
+            model_name=self.gemini_model_name,
+            system_instruction="あなたは技術文書を理解する専門家アシスタントです。コンテキスト情報に基づいて正確に回答してください。",
+        )
+        response = model.generate_content(content_parts, generation_config=generation_config)
+
+        answer = response.text
+        logger.info(f"Gemini response received. Generated answer length: {len(answer) if answer else 0} characters")
+
+        return answer
+
+    @observe(name="gemini_streaming", as_type="generation")
+    def _stream_gemini(
+        self, prompt: str, image_paths: List[str], search_results: Dict[str, List[Dict[str, Any]]]
+    ):
+        """
+        Gemini APIでストリーミング回答を生成（@observeデコレーターでLangfuseトレーシング）
+
+        Args:
+            prompt: プロンプトテキスト
+            image_paths: 画像パスのリスト
+            search_results: ベクトル検索結果
+
+        Yields:
+            dict: ストリーミングチャンクまたは最終結果
+        """
+        # マルチモーダルコンテンツを構築
+        content_parts = [prompt]
+
+        # 画像を追加
+        for image_path in image_paths:
+            if Path(image_path).exists():
+                try:
+                    img = Image.open(image_path)
+                    content_parts.append(img)
+                except Exception as e:
+                    logger.warning(f"Failed to load image {image_path}: {e}")
+
+        logger.info(f"Sending streaming prompt to Gemini (text: {len(prompt)} chars, images: {len(content_parts) - 1})")
+
+        # Gemini API呼び出し（ストリーミング）
+        generation_config = {
+            "max_output_tokens": self.gemini_config.get("max_tokens", 8192),
+            "temperature": self.gemini_config.get("temperature", 1.0),
+        }
+        model = genai.GenerativeModel(
+            model_name=self.gemini_model_name,
+            system_instruction="あなたは業務マニュアルを理解する専門家アシスタントです。コンテキスト情報に基づいて正確に回答してください。",
+        )
+        response = model.generate_content(content_parts, stream=True, generation_config=generation_config)
+
+        # ストリーミングチャンクをyield
+        full_answer = ""
+        for chunk in response:
+            if chunk.text:
+                full_answer += chunk.text
+                yield {"type": "chunk", "content": chunk.text}
+
+        logger.info(f"Gemini streaming response completed. Generated answer length: {len(full_answer)} characters")
+
+        # Langfuse Generation トレース（ストリーミング完了後）
+        if trace:
+            try:
+                trace.generation(
+                    name="gemini_streaming_completion",
+                    model=self.gemini_model_name,
+                    input=prompt,
+                    output=full_answer,
+                    metadata={
+                        "image_count": len(content_parts) - 1,
+                        "image_paths": image_paths if len(image_paths) <= 5 else image_paths[:5] + ["..."],
+                        "provider": "google",
+                        "temperature": generation_config["temperature"],
+                        "max_tokens": generation_config["max_output_tokens"],
+                        "streaming": True,
+                    },
+                )
+                logger.info(f"Langfuse trace generation recorded for Gemini streaming")
+            except Exception as e:
+                logger.error(f"Failed to record Langfuse trace: {e}")
+
+        # 最終結果をyield
+        yield {
+            "type": "final",
+            "answer": full_answer,
+            "sources": self._extract_sources(search_results),
+            "search_results": search_results,
+        }
 
     def _build_context(self, search_results: Dict[str, List[Dict[str, Any]]]) -> str:
         """

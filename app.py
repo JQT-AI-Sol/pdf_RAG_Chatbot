@@ -5,15 +5,17 @@ Streamlit Application for PDF RAG System
 import streamlit as st
 import logging
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # src モジュールのインポート
-from src.utils import load_config, load_environment, ensure_directories, setup_logging
+from src.utils import load_config, load_environment, ensure_directories, setup_logging, encode_pdf_to_base64
 from src.category_manager import CategoryManager
 from src.pdf_processor import PDFProcessor
 from src.text_embedder import TextEmbedder
 from src.vision_analyzer import VisionAnalyzer
 from src.vector_store import VectorStore
 from src.rag_engine import RAGEngine
+from src.pdf_manager import PDFManager
 
 
 # ページ設定
@@ -54,6 +56,11 @@ def initialize_app():
             st.session_state.vector_store,
             st.session_state.embedder
         )
+        st.session_state.pdf_manager = PDFManager(
+            st.session_state.vector_store,
+            st.session_state.category_manager,
+            config
+        )
         st.session_state.chat_history = []
 
     return config
@@ -93,6 +100,41 @@ def sidebar():
     else:
         st.sidebar.info("まだカテゴリーが登録されていません")
 
+    # 登録済みPDF管理
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📄 登録済みPDF管理")
+
+    registered_pdfs = st.session_state.pdf_manager.get_registered_pdfs()
+    if registered_pdfs:
+        for pdf in registered_pdfs:
+            with st.sidebar.expander(f"📄 {pdf['source_file']}", expanded=False):
+                st.write(f"**カテゴリー**: {pdf['category']}")
+                st.write(f"**テキストデータ**: {pdf['text_count']} 件")
+                st.write(f"**画像データ**: {pdf['image_count']} 件")
+                st.write(f"**合計**: {pdf['total_count']} 件")
+
+                # ボタンを2列に配置
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    # 閲覧ボタン
+                    pdf_path = Path("data/uploaded_pdfs") / pdf['source_file']
+                    if pdf_path.exists():
+                        show_pdf_link(pdf_path, pdf['source_file'], key_suffix="sidebar")
+                    else:
+                        st.error(f"PDFファイルが見つかりません: {pdf['source_file']}")
+
+                with col2:
+                    # 削除ボタン（アイコンのみ）
+                    delete_key = f"delete_{pdf['source_file']}"
+                    if st.button("🗑️", key=delete_key, type="secondary", use_container_width=True, help="PDFを削除する"):
+                        # 削除確認用のセッション状態を設定
+                        st.session_state.delete_target = pdf['source_file']
+                        st.session_state.show_delete_confirm = True
+                        st.rerun()
+    else:
+        st.sidebar.info("登録済みPDFがありません")
+
     # チャットリセットボタン
     st.sidebar.markdown("---")
     if st.sidebar.button("🗑️ チャット履歴をリセット", type="secondary"):
@@ -108,27 +150,46 @@ def process_pdfs(uploaded_files, category):
     progress_bar = st.sidebar.progress(0)
     status_text = st.sidebar.empty()
 
+    # ファイルサイズの上限を取得
+    max_size_mb = st.session_state.config.get('pdf_upload', {}).get('max_file_size_mb', 50)
+
     for i, uploaded_file in enumerate(uploaded_files):
         try:
-            status_text.text(f"処理中: {uploaded_file.name} (1/5) - PDF保存中...")
+            # ファイルサイズチェック
+            file_size_mb = len(uploaded_file.getbuffer()) / (1024 * 1024)
+            if file_size_mb > max_size_mb:
+                st.sidebar.error(f"{uploaded_file.name}: ファイルサイズが上限（{max_size_mb}MB）を超えています（{file_size_mb:.1f}MB）")
+                continue
 
-            # 1. PDFを保存
+            # 1. PDFを保存（data/uploaded_pdfs/ と static/pdfs/ の両方）
+            status_text.text(f"処理中: {uploaded_file.name} (1/?) - PDF保存中...")
             pdf_path = Path("data/uploaded_pdfs") / uploaded_file.name
             pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            static_pdf_path = Path("static/pdfs") / uploaded_file.name
+            static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+            pdf_bytes = uploaded_file.getbuffer()
             with open(pdf_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+                f.write(pdf_bytes)
+            with open(static_pdf_path, "wb") as f:
+                f.write(pdf_bytes)
 
             # 2. テキスト・画像抽出
-            status_text.text(f"処理中: {uploaded_file.name} (2/5) - テキスト・画像抽出中...")
+            status_text.text(f"処理中: {uploaded_file.name} (2/?) - テキスト・画像抽出中...")
             pdf_result = st.session_state.pdf_processor.process_pdf(str(pdf_path), category)
 
-            # 3. テキストチャンクをエンベディング
-            status_text.text(f"処理中: {uploaded_file.name} (3/5) - テキストエンベディング中...")
+            # 総ステップ数を決定（画像があれば5、なければ4）
+            total_steps = 5 if pdf_result['images'] else 4
+            num_pages = pdf_result.get('total_pages', '?')
+            num_chunks = len(pdf_result['text_chunks'])
+            num_images = len(pdf_result['images'])
+
+            # 3. テキストチャンクをエンベディング（バッチ処理）
+            status_text.text(f"処理中: {uploaded_file.name} (3/{total_steps}) - テキストエンベディング中（{num_chunks}チャンク）...")
             if pdf_result['text_chunks']:
-                text_embeddings = []
-                for chunk in pdf_result['text_chunks']:
-                    embedding = st.session_state.embedder.embed_text(chunk['text'])
-                    text_embeddings.append(embedding)
+                # 全テキストをまとめてバッチ処理
+                texts = [chunk['text'] for chunk in pdf_result['text_chunks']]
+                text_embeddings = st.session_state.embedder.embed_batch(texts)
 
                 # ベクトルストアに追加
                 st.session_state.vector_store.add_text_chunks(
@@ -136,41 +197,49 @@ def process_pdfs(uploaded_files, category):
                     text_embeddings
                 )
 
-            # 4. 画像をVision AIで解析
-            status_text.text(f"処理中: {uploaded_file.name} (4/5) - 画像解析中...")
+            # 4. 画像をVision AIで解析（並列処理）- 画像がある場合のみ
             if pdf_result['images']:
-                for image_data in pdf_result['images']:
+                status_text.text(f"処理中: {uploaded_file.name} (4/{total_steps}) - 画像解析中（{num_images}枚）...")
+                max_workers = st.session_state.config.get('performance', {}).get('max_workers', 4)
+                analyzed_images = []
+
+                # 画像解析を並列処理
+                def analyze_single_image(image_data):
                     try:
-                        # Vision AI解析（pdf_processorが設定したcontent_typeを使用）
                         actual_content_type = image_data.get('content_type', 'image')
                         analysis = st.session_state.vision_analyzer.analyze_image(
                             image_data['image_path'],
                             content_type=actual_content_type
                         )
-
-                        # 解析結果をエンベディング
-                        image_embedding = st.session_state.embedder.embed_text(
-                            analysis['description']
-                        )
-
                         # メタデータを統合
                         image_data.update({
                             'category': category,
                             'content_type': analysis.get('content_type', 'image'),
                             'description': analysis['description']
                         })
-
-                        # ベクトルストアに追加
-                        st.session_state.vector_store.add_image_content(
-                            image_data,
-                            image_embedding
-                        )
-
+                        return image_data
                     except Exception as e:
-                        logging.error(f"Error processing image: {e}")
-                        continue
+                        logging.error(f"Error analyzing image: {e}")
+                        return None
 
-            status_text.text(f"処理中: {uploaded_file.name} (5/5) - 完了！")
+                # ThreadPoolExecutorで並列処理
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {executor.submit(analyze_single_image, img): img for img in pdf_result['images']}
+                    for future in as_completed(futures):
+                        result = future.result()
+                        if result:
+                            analyzed_images.append(result)
+
+                # 解析結果をバッチでエンベディング
+                if analyzed_images:
+                    descriptions = [img['description'] for img in analyzed_images]
+                    image_embeddings = st.session_state.embedder.embed_batch(descriptions)
+
+                    # ベクトルストアにバッチで追加
+                    st.session_state.vector_store.add_image_contents_batch(analyzed_images, image_embeddings)
+
+            # 完了
+            status_text.text(f"処理中: {uploaded_file.name} ({total_steps}/{total_steps}) - 完了！")
             progress_bar.progress((i + 1) / len(uploaded_files))
 
         except Exception as e:
@@ -181,18 +250,113 @@ def process_pdfs(uploaded_files, category):
     status_text.success("✅ すべてのPDFの処理が完了しました！")
 
 
+@st.dialog("PDF削除の確認")
+def confirm_delete_dialog():
+    """PDF削除の確認ダイアログ"""
+    if 'delete_target' not in st.session_state:
+        st.error("削除対象が指定されていません")
+        return
+
+    target_file = st.session_state.delete_target
+    pdf_info = st.session_state.pdf_manager.get_pdf_info(target_file)
+
+    if pdf_info:
+        st.warning(f"以下のPDFとその関連データを削除しますか？")
+        st.write(f"**ファイル名**: {pdf_info['source_file']}")
+        st.write(f"**カテゴリー**: {pdf_info['category']}")
+        st.write(f"**削除されるデータ**:")
+        st.write(f"- テキストデータ: {pdf_info['text_count']} 件")
+        st.write(f"- 画像データ: {pdf_info['image_count']} 件")
+        st.write(f"- PDFファイル本体")
+        st.write(f"- 抽出された画像ファイル")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ 削除する", type="primary", use_container_width=True):
+                # 削除実行
+                with st.spinner("削除中..."):
+                    result = st.session_state.pdf_manager.delete_pdf(target_file)
+
+                if result['success']:
+                    st.success(result['message'])
+                    if result['category_deleted']:
+                        st.info(f"カテゴリー「{pdf_info['category']}」も削除されました（他にPDFがないため）")
+
+                    # セッション状態をクリア
+                    if 'delete_target' in st.session_state:
+                        del st.session_state.delete_target
+                    if 'show_delete_confirm' in st.session_state:
+                        del st.session_state.show_delete_confirm
+
+                    st.rerun()
+                else:
+                    st.error(result['message'])
+
+        with col2:
+            if st.button("❌ キャンセル", use_container_width=True):
+                # セッション状態をクリア
+                if 'delete_target' in st.session_state:
+                    del st.session_state.delete_target
+                if 'show_delete_confirm' in st.session_state:
+                    del st.session_state.show_delete_confirm
+                st.rerun()
+    else:
+        st.error("PDFが見つかりませんでした")
+
+
+def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
+    """PDFを新しいタブで開くリンクを表示（アイコンのみ）"""
+    # 静的ファイルのURLを生成
+    pdf_url = f"/app/static/pdfs/{target_file}"
+
+    # アイコンのみのリンクを表示（ホバー時に説明文表示）
+    st.markdown(
+        f'<a href="{pdf_url}" target="_blank" title="PDFを閲覧する" style="'
+        f'display: inline-block; '
+        f'width: 100%; '
+        f'padding: 0.5rem 1rem; '
+        f'background-color: #ff4b4b; '
+        f'color: white; '
+        f'text-align: center; '
+        f'text-decoration: none; '
+        f'border-radius: 0.5rem; '
+        f'font-size: 1.2rem; '
+        f'">📖</a>',
+        unsafe_allow_html=True
+    )
+
+
 def main_area():
     """メインエリアのUI"""
+    # 削除確認ダイアログの表示
+    if st.session_state.get('show_delete_confirm', False):
+        confirm_delete_dialog()
+
     st.title("📚 PDF RAG System")
     st.markdown("---")
 
-    # カテゴリー選択
-    categories = ["全カテゴリー"] + st.session_state.category_manager.get_all_categories()
-    selected_category = st.selectbox(
-        "🔍 検索対象カテゴリー",
-        categories,
-        help="質問する対象のカテゴリーを選択してください"
-    )
+    # カテゴリーとモデル選択を横並びに
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        categories = ["全カテゴリー"] + st.session_state.category_manager.get_all_categories()
+        selected_category = st.selectbox(
+            "🔍 検索対象カテゴリー",
+            categories,
+            help="質問する対象のカテゴリーを選択してください"
+        )
+
+    with col2:
+        model_options = {
+            "GPT-4o-mini": "openai",
+            "Gemini-2.5-flash": "gemini"
+        }
+        selected_model_display = st.selectbox(
+            "🤖 AIモデル",
+            list(model_options.keys()),
+            help="使用するAIモデルを選択"
+        )
+        selected_model = model_options[selected_model_display]
 
     # 質問入力
     question = st.text_input(
@@ -213,13 +377,31 @@ def main_area():
                     "content": question
                 })
 
-                # 回答生成（ストリーミング反映待ち - 最大15分）
+                # 回答生成（ストリーミング表示、失敗時は通常モードにフォールバック）
                 st.markdown("### 💬 回答")
-                with st.spinner("回答を生成中..."):
-                    result_data = st.session_state.rag_engine.query(question, category_filter)
+                answer_placeholder = st.empty()
+                full_answer = ""
+                result_data = None
 
-                # 回答表示
-                st.markdown(result_data['answer'])
+                try:
+                    # ストリーミング表示
+                    for chunk_data in st.session_state.rag_engine.query_stream(question, category_filter, model_type=selected_model):
+                        if chunk_data["type"] == "chunk":
+                            full_answer += chunk_data["content"]
+                            answer_placeholder.markdown(full_answer + "▌")  # カーソル表示
+                        elif chunk_data["type"] == "final":
+                            answer_placeholder.markdown(full_answer)
+                            result_data = chunk_data
+                except Exception as stream_error:
+                    # ストリーミングエラー時は通常モードにフォールバック
+                    if "stream" in str(stream_error).lower() or "unsupported_value" in str(stream_error).lower():
+                        st.warning("⚠️ ストリーミングモードが利用できません。通常モードで回答を生成します...")
+                        answer_placeholder.empty()
+                        with st.spinner(f"回答を生成中... ({selected_model_display})"):
+                            result_data = st.session_state.rag_engine.query(question, category_filter, model_type=selected_model)
+                        answer_placeholder.markdown(result_data['answer'])
+                    else:
+                        raise stream_error
 
                 # 参照元表示
                 if result_data:
@@ -229,6 +411,15 @@ def main_area():
                             with st.expander(f"参照 {idx}: {source['file']} (ページ {source['page']})"):
                                 st.write(f"**カテゴリー**: {source['category']}")
                                 st.write(f"**タイプ**: {source['type']}")
+
+                                # PDF全体を閲覧ボタン
+                                pdf_path = Path("data/uploaded_pdfs") / source['file']
+                                if pdf_path.exists():
+                                    show_pdf_link(pdf_path, source['file'], key_suffix=f"ref_{idx}")
+                                else:
+                                    st.error(f"PDFファイルが見つかりません: {source['file']}")
+
+                                st.markdown("---")
 
                                 # 元のPDFページを表示
                                 pdf_path = Path("data/uploaded_pdfs") / source['file']

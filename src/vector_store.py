@@ -52,7 +52,9 @@ class VectorStore:
             embeddings: 対応するエンベディングのリスト
         """
         try:
-            ids = [f"text_{i}" for i in range(len(chunks))]
+            import uuid
+            # ユニークなIDを生成（UUID使用）
+            ids = [f"text_{uuid.uuid4().hex[:16]}_{i}" for i in range(len(chunks))]
             documents = [chunk['text'] for chunk in chunks]
             metadatas = [
                 {
@@ -86,7 +88,9 @@ class VectorStore:
             embedding: エンベディング
         """
         try:
-            image_id = f"image_{image_data['image_path']}"
+            import hashlib
+            # image_pathをハッシュ化してユニークIDを生成
+            image_id = f"image_{hashlib.md5(image_data['image_path'].encode()).hexdigest()}"
 
             metadata = {
                 'source_file': image_data.get('source_file', ''),
@@ -107,6 +111,46 @@ class VectorStore:
 
         except Exception as e:
             logger.error(f"Error adding image content: {e}")
+            raise
+
+    def add_image_contents_batch(self, image_data_list: List[Dict[str, Any]], embeddings: List[List[float]]):
+        """
+        複数の画像コンテンツをバッチでベクトルストアに追加
+
+        Args:
+            image_data_list: 画像データと解析結果のリスト
+            embeddings: 対応するエンベディングのリスト
+        """
+        try:
+            if not image_data_list or not embeddings:
+                return
+
+            import hashlib
+            # image_pathをハッシュ化してユニークIDを生成
+            ids = [f"image_{hashlib.md5(img_data['image_path'].encode()).hexdigest()}" for img_data in image_data_list]
+            documents = [img_data.get('description', '') for img_data in image_data_list]
+            metadatas = [
+                {
+                    'source_file': img_data.get('source_file', ''),
+                    'page_number': img_data.get('page_number', 0),
+                    'category': img_data.get('category', ''),
+                    'content_type': img_data.get('content_type', 'image'),
+                    'image_path': img_data['image_path']
+                }
+                for img_data in image_data_list
+            ]
+
+            self.image_collection.add(
+                ids=ids,
+                embeddings=embeddings,
+                documents=documents,
+                metadatas=metadatas
+            )
+
+            logger.info(f"Added {len(image_data_list)} image contents to vector store in batch")
+
+        except Exception as e:
+            logger.error(f"Error adding image contents in batch: {e}")
             raise
 
     def search(self, query_embedding: List[float], category: Optional[str] = None,
@@ -182,3 +226,112 @@ class VectorStore:
             })
 
         return formatted
+
+    def get_registered_pdfs(self) -> List[Dict[str, Any]]:
+        """
+        登録済みPDFのリストを取得
+
+        Returns:
+            list: PDFファイルごとの情報
+                [{
+                    'source_file': str,
+                    'category': str,
+                    'text_count': int,
+                    'image_count': int,
+                    'total_count': int
+                }, ...]
+        """
+        try:
+            pdf_info = {}
+
+            # テキストコレクションから取得
+            text_data = self.text_collection.get()
+            if text_data and text_data.get('metadatas'):
+                for metadata in text_data['metadatas']:
+                    source_file = metadata.get('source_file', '')
+                    if source_file:
+                        if source_file not in pdf_info:
+                            pdf_info[source_file] = {
+                                'source_file': source_file,
+                                'category': metadata.get('category', ''),
+                                'text_count': 0,
+                                'image_count': 0
+                            }
+                        pdf_info[source_file]['text_count'] += 1
+
+            # イメージコレクションから取得
+            image_data = self.image_collection.get()
+            if image_data and image_data.get('metadatas'):
+                for metadata in image_data['metadatas']:
+                    source_file = metadata.get('source_file', '')
+                    if source_file:
+                        if source_file not in pdf_info:
+                            pdf_info[source_file] = {
+                                'source_file': source_file,
+                                'category': metadata.get('category', ''),
+                                'text_count': 0,
+                                'image_count': 0
+                            }
+                        pdf_info[source_file]['image_count'] += 1
+
+            # 合計カウントを追加
+            result = []
+            for pdf_data in pdf_info.values():
+                pdf_data['total_count'] = pdf_data['text_count'] + pdf_data['image_count']
+                result.append(pdf_data)
+
+            # ファイル名でソート
+            result.sort(key=lambda x: x['source_file'])
+
+            logger.info(f"Found {len(result)} registered PDFs")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error getting registered PDFs: {e}")
+            return []
+
+    def delete_by_source_file(self, source_file: str) -> Dict[str, int]:
+        """
+        特定のPDFファイルに関連する全てのベクトルデータを削除
+
+        Args:
+            source_file: 削除対象のPDFファイル名
+
+        Returns:
+            dict: 削除件数 {'text_deleted': int, 'image_deleted': int}
+        """
+        deleted_counts = {
+            'text_deleted': 0,
+            'image_deleted': 0
+        }
+
+        try:
+            # テキストコレクションから削除
+            text_data = self.text_collection.get(
+                where={'source_file': source_file}
+            )
+            if text_data and text_data.get('ids'):
+                text_ids = text_data['ids']
+                if text_ids:
+                    self.text_collection.delete(ids=text_ids)
+                    deleted_counts['text_deleted'] = len(text_ids)
+                    logger.info(f"Deleted {len(text_ids)} text chunks for {source_file}")
+
+            # イメージコレクションから削除
+            image_data = self.image_collection.get(
+                where={'source_file': source_file}
+            )
+            if image_data and image_data.get('ids'):
+                image_ids = image_data['ids']
+                if image_ids:
+                    self.image_collection.delete(ids=image_ids)
+                    deleted_counts['image_deleted'] = len(image_ids)
+                    logger.info(f"Deleted {len(image_ids)} image contents for {source_file}")
+
+            logger.info(f"Successfully deleted all data for {source_file}")
+
+        except Exception as e:
+            logger.error(f"Error deleting data for {source_file}: {e}")
+            raise
+
+        return deleted_counts

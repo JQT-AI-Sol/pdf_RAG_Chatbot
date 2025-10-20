@@ -235,9 +235,35 @@ class PDFProcessor:
         output_dir = Path(f"data/extracted_images/{pdf_name}")
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # 設定フラグを取得
+        extract_tables = self.pdf_config.get("extract_tables_as_markdown", True)
+        extract_images_flag = self.pdf_config.get("extract_images", True)
+
         try:
-            # 1. 表を検出
-            tables = page.find_tables()
+            # 1. 表を検出（最適化設定を適用）
+            # 表抽出が無効の場合はスキップ
+            if not extract_tables:
+                logger.debug(f"Skipping table extraction on page {page_num} (disabled in config)")
+                tables = []
+            else:
+                strategy = self.pdf_config.get("table_detection_strategy", "fast")
+
+                if strategy == "fast":
+                    # 高速モード: 精度を少し犠牲にして処理速度を優先
+                    table_settings = {
+                        "vertical_strategy": "lines",      # 垂直線のみ検出
+                        "horizontal_strategy": "lines",    # 水平線のみ検出
+                        "snap_tolerance": 5,               # スナップ許容値を緩和
+                        "join_tolerance": 5,               # 結合許容値を緩和
+                        "edge_min_length": 10,             # 最小エッジ長を設定（短い線を無視）
+                        "min_words_vertical": 1,           # 最小単語数を削減
+                        "min_words_horizontal": 1,
+                    }
+                    tables = page.find_tables(table_settings=table_settings)
+                else:
+                    # 高精度モード: デフォルト設定で詳細検出
+                    tables = page.find_tables()
+
             if tables:
                 logger.debug(f"Found {len(tables)} tables on page {page_num}")
 
@@ -323,7 +349,11 @@ class PDFProcessor:
                         continue
 
             # 2. その他の画像オブジェクトを抽出（グラフや図など）
-            if hasattr(page, "images") and page.images:
+            # 画像抽出が無効の場合はスキップ
+            if not extract_images_flag:
+                logger.debug(f"Skipping image extraction on page {page_num} (disabled in config)")
+            elif hasattr(page, "images") and page.images:
+                logger.debug(f"Found {len(page.images)} image objects on page {page_num}")
                 margin = self.pdf_config.get("image_crop_margin", 50)  # デフォルト50px
 
                 for img_idx, img in enumerate(page.images):
