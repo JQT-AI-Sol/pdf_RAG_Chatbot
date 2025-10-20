@@ -423,7 +423,7 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
                     data=pdf_bytes,
                     file_name=target_file,
                     mime="application/pdf",
-                    key=f"download_pdf_{key_suffix}",
+                    key=f"download_pdf_{key_suffix}_{target_file.replace('.', '_')}",
                     use_container_width=True
                 )
         else:
