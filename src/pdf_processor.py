@@ -62,26 +62,68 @@ class PDFProcessor:
 
                 # テキスト抽出
                 text = page.extract_text()
-                if text:
+
+                # テキストが抽出できない、または非常に少ない場合
+                # → 画像ベースPDFまたは特殊エンコーディングの可能性
+                if not text or len(text.strip()) < 50:
+                    logger.warning(f"Page {page_num}: テキスト抽出失敗またはテキスト量が少ない。ページ全体を画像として保存します。")
+
+                    # ページ全体を画像として保存
+                    pdf_name = Path(pdf_path).stem
+                    output_dir = Path(f"data/extracted_images/{pdf_name}")
+                    output_dir.mkdir(parents=True, exist_ok=True)
+
+                    # ページ全体を画像化
+                    max_size = self.vision_config.get("max_image_size", 2000)
+                    im = page.to_image(resolution=150)
+                    pil_image = im.original
+
+                    # 画像をリサイズ（大きすぎる場合）
+                    if max(pil_image.size) > max_size:
+                        ratio = max_size / max(pil_image.size)
+                        new_size = tuple(int(dim * ratio) for dim in pil_image.size)
+                        pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
+
+                    # 画像を保存
+                    image_filename = f"page_{page_num}_full.png"
+                    image_path = output_dir / image_filename
+                    self.save_extracted_image(pil_image, str(image_path))
+
+                    # メタデータを作成
+                    image_info = {
+                        "image_path": str(image_path),
+                        "page_number": page_num,
+                        "image_index": 0,
+                        "width": pil_image.size[0],
+                        "height": pil_image.size[1],
+                        "source_file": source_file,
+                        "category": category,
+                        "content_type": "full_page",  # ページ全体の画像として明示
+                    }
+                    page_result["images"].append(image_info)
+
+                    logger.info(f"Page {page_num}: 全体画像として保存しました ({image_path})")
+                else:
+                    # テキストが抽出できた場合は通常処理
                     page_result["text_chunks"].extend(
                         self._create_text_chunks(text, page_num, source_file, category)
                     )
 
-                # 画像と表を抽出
-                page_data = self._extract_images_from_page(page, page_num, pdf_path)
+                    # 画像と表を抽出
+                    page_data = self._extract_images_from_page(page, page_num, pdf_path)
 
-                # 画像データを追加
-                page_result["images"].extend(page_data["images"])
+                    # 画像データを追加
+                    page_result["images"].extend(page_data["images"])
 
-                # テーブルMarkdownを追加
-                for table_markdown in page_data["table_markdowns"]:
-                    page_result["table_markdowns"].append({
-                        "text": table_markdown["text"],
-                        "page_number": table_markdown["page_number"],
-                        "source_file": source_file,
-                        "category": category,
-                        "content_type": "table_markdown"
-                    })
+                    # テーブルMarkdownを追加
+                    for table_markdown in page_data["table_markdowns"]:
+                        page_result["table_markdowns"].append({
+                            "text": table_markdown["text"],
+                            "page_number": table_markdown["page_number"],
+                            "source_file": source_file,
+                            "category": category,
+                            "content_type": "table_markdown"
+                        })
 
         except Exception as e:
             logger.error(f"Error processing page {page_num}: {e}")

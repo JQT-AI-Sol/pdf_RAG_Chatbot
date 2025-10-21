@@ -1,14 +1,14 @@
 # OpenAI設定
 openai:
-  model_chat: "gpt-4o-mini"  # GPT-4o-miniを使用（ストリーミング対応）
+  model_chat: "gpt-4o"  # GPT-4oを使用（ストリーミング対応）
   model_embedding: "text-embedding-3-large"  # より高性能なembedding
   temperature: 0.7  # GPT-5系はデフォルト値(1)のみサポート（パラメータ指定不要）
   max_tokens: 16000  # max_completion_tokensとして使用（推論トークン+回答用）
 
 # Gemini設定
 gemini:
-  model_chat: "gemini-2.5-flash"  # チャット用モデル
-  model_vision: "gemini-2.5-flash"  # 画像解析用モデル
+  model_chat: "gemini-2.5-pro"  # チャット用モデル
+  model_vision: "gemini-2.5-pro"  # 画像解析用モデル
   max_tokens: 8192  # 最大出力トークン数
   temperature: 0.7  # 温度パラメータ
   # GEMINI_API_KEY環境変数から読み込み
@@ -62,26 +62,29 @@ vision:
   use_for_complex_tables: true  # 複雑な表もVision使用
   use_for_simple_tables: false  # シンプルな表はMarkdown化のみ
   analysis_prompt_table: |
-    あなたは技術文書の表を解析する専門家です。
-    以下の画像は技術マニュアルに含まれる表です。
+    あなたは技術文書・制度説明資料を解析する専門家です。
+    以下の画像は文書ページまたは表が含まれています。
 
-    以下の情報を抽出してください：
+    以下の情報を**すべて**抽出してください：
 
-    1. **表の構造**
-       - 行数と列数
+    1. **ページ全体の内容**
+       - タイトルや見出し
+       - 本文のテキストをすべて抽出
+       - 箇条書きや番号付きリストの内容
+
+    2. **表がある場合の情報**
+       - 表のタイトル
        - ヘッダー行の内容
-       - 表のタイトル（あれば）
-
-    2. **表の内容**
-       - 各セルの主要なデータ
-       - 数値データがあれば具体的な値
+       - すべての行・列のデータ（省略せず全て）
+       - 数値データは具体的な値を記載
        - 単位があれば記載
 
-    3. **表の意味**
-       - この表が示している情報は何か
-       - 主要なデータポイントや傾向
+    3. **その他の情報**
+       - 注釈や補足説明
+       - 参照情報や連絡先
+       - 重要な強調箇所
 
-    検索可能なテキスト形式で出力してください。
+    **重要**: すべてのテキストを検索可能な形式で詳細に出力してください。省略せず、完全な情報を抽出してください。
 
   analysis_prompt_graph: |
     あなたは技術文書のグラフを解析する専門家です。

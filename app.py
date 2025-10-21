@@ -168,8 +168,8 @@ def sidebar():
 
     # AIモデル選択
     model_options = {
-        "GPT-4o-mini": "openai",
-        "Gemini-2.5-flash": "gemini"
+        "GPT-4o": "openai",
+        "Gemini-2.5-Pro": "gemini"
     }
     current_model_display = [k for k, v in model_options.items() if v == st.session_state.selected_model][0]
     selected_model_display = st.sidebar.selectbox(
@@ -550,8 +550,8 @@ def main_area():
         #### **Step 4: 質問の入力** 💬
         - サイドバーで「🔍 検索対象カテゴリー」と「🤖 AIモデル」を選択
           - **検索対象カテゴリー**: 「全カテゴリー」またはドキュメント範囲を指定
-          - **GPT-4o-mini**: 汎用性が高く、安定した応答品質
-          - **Gemini-2.5-flash**: マルチモーダルに強く、画像・グラフの理解に優れる
+          - **GPT-4o**: 高度な推論能力と安定した応答品質
+          - **Gemini-2.5-Pro**: マルチモーダルに強く、画像・グラフ・複雑な文書の理解に優れる
         - 最下部の入力欄に質問を入力してEnterキーまたは送信ボタンをクリック
 
         #### **Step 5: 回答の確認** ✅
@@ -705,10 +705,10 @@ def main_area():
 
         # モデル表示名を取得
         model_display_names = {
-            "openai": "GPT-4o-mini",
-            "gemini": "Gemini-2.5-flash"
+            "openai": "GPT-4o",
+            "gemini": "Gemini-2.5-Pro"
         }
-        current_model_display = model_display_names.get(st.session_state.selected_model, "GPT-4o-mini")
+        current_model_display = model_display_names.get(st.session_state.selected_model, "GPT-4o")
 
         try:
             # ユーザーの質問を表示
