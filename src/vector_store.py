@@ -34,9 +34,12 @@ class VectorStore:
 
         # ChromaDBクライアントの初期化
         if is_streamlit_cloud:
-            # Streamlit Cloudではメモリ内のEphemeralClientを使用
-            logger.warning("Running on Streamlit Cloud - using EphemeralClient (data will not persist)")
-            self.client = chromadb.EphemeralClient()
+            # Streamlit Cloudでは一時ディレクトリにPersistentClientを使用
+            # /tmpは再起動で消えるが、セッション中は永続化される
+            persist_dir = '/tmp/chroma_db'
+            logger.warning(f"Running on Streamlit Cloud - using PersistentClient with temporary directory: {persist_dir}")
+            os.makedirs(persist_dir, exist_ok=True)
+            self.client = chromadb.PersistentClient(path=persist_dir)
         else:
             # ローカル環境ではPersistentClientを使用
             self.client = chromadb.PersistentClient(
