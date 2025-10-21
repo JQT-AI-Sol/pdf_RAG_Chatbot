@@ -187,10 +187,6 @@ def sidebar():
     st.sidebar.markdown("---")
     if st.sidebar.button("🗑️ チャット履歴をリセット", type="secondary"):
         st.session_state.chat_history = []
-        # 入力フォームをクリアするためのフラグ
-        if 'chat_input_key' not in st.session_state:
-            st.session_state.chat_input_key = 0
-        st.session_state.chat_input_key += 1
         st.rerun()
 
 
@@ -639,26 +635,11 @@ def main_area():
                                 st.markdown("---")
                             source_idx += 1
 
-    # カスタムチャット入力
-    col1, col2 = st.columns([9, 1])
+    # 標準チャット入力
+    question = st.chat_input("💬 質問を入力してください（例: この製品の主な特徴は何ですか？）")
 
-    with col1:
-        # テキスト入力（リセット時にクリアするため動的キーを使用）
-        if 'chat_input_key' not in st.session_state:
-            st.session_state.chat_input_key = 0
-        question = st.text_input(
-            "質問を入力",
-            key=f"chat_input_{st.session_state.chat_input_key}",
-            placeholder="💬 質問を入力してください（例: この製品の主な特徴は何ですか？）",
-            label_visibility="collapsed"
-        )
-
-    with col2:
-        # 送信ボタン（動的キーを使用）
-        send_button = st.button("▶", key=f"send_button_{st.session_state.chat_input_key}", help="送信", use_container_width=True, type="primary")
-
-    # 質問が送信された場合（送信ボタンのみ）
-    if send_button and question:
+    # 質問が送信された場合
+    if question:
         # カテゴリーフィルター設定
         category_filter = None if st.session_state.selected_category == "全カテゴリー" else st.session_state.selected_category
 
