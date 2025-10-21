@@ -103,6 +103,9 @@ class VisionAnalyzer:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
+            # プロンプトの最初の100文字をログ出力（デバッグ用）
+            logger.info(f"Using prompt (first 100 chars): {prompt[:100]}...")
+
             # 画像を開く
             image = Image.open(image_path)
             logger.debug(f"Image loaded: {image_path}")
