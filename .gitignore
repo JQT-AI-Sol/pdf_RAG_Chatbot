@@ -73,4 +73,8 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Test scripts
 test_supabase_*.py
+test_metadata_*.py
+check_supabase_*.py
