@@ -229,20 +229,20 @@ class RAGEngine:
 
             # テキストコンテキスト
             for result in search_results.get("text", []):
-                doc = result["document"]
-                metadata = result["metadata"]
-                context_parts.append(f"[{metadata.get('source_file', '')} - Page {metadata.get('page_number', '')}]\n{doc}")
+                doc = result.get("content", "")
+                source_file = result.get("source_file", "")
+                page_number = result.get("page_number", "")
+                context_parts.append(f"[{source_file} - Page {page_number}]\n{doc}")
 
             # 画像コンテキスト
             for result in search_results.get("images", []):
-                metadata = result["metadata"]
-                image_path = metadata.get("image_path")
+                image_path = result.get("path", "")
                 if image_path and Path(image_path).exists():
                     image_data_list.append({
                         "path": image_path,
-                        "description": result["document"],
-                        "source": metadata.get("source_file", ""),
-                        "page": metadata.get("page_number", ""),
+                        "description": result.get("description", ""),
+                        "source": result.get("source_file", ""),
+                        "page": result.get("page_number", ""),
                     })
 
             context_text = "\n\n".join(context_parts)
@@ -451,20 +451,20 @@ class RAGEngine:
 
             # テキストコンテキスト
             for result in search_results.get("text", []):
-                doc = result["document"]
-                metadata = result["metadata"]
-                context_parts.append(f"[{metadata.get('source_file', '')} - Page {metadata.get('page_number', '')}]\n{doc}")
+                doc = result.get("content", "")
+                source_file = result.get("source_file", "")
+                page_number = result.get("page_number", "")
+                context_parts.append(f"[{source_file} - Page {page_number}]\n{doc}")
 
             # 画像コンテキスト
             for result in search_results.get("images", []):
-                metadata = result["metadata"]
-                image_path = metadata.get("image_path")
+                image_path = result.get("path", "")
                 if image_path and Path(image_path).exists():
                     image_data_list.append({
                         "path": image_path,
-                        "description": result["document"],
-                        "source": metadata.get("source_file", ""),
-                        "page": metadata.get("page_number", ""),
+                        "description": result.get("description", ""),
+                        "source": result.get("source_file", ""),
+                        "page": result.get("page_number", ""),
                     })
 
             context_text = "\n\n".join(context_parts)
