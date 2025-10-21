@@ -59,7 +59,6 @@ def initialize_app():
         st.session_state.chat_history = []
         st.session_state.selected_category = "全カテゴリー"
         st.session_state.selected_model = "openai"
-        st.session_state.uploaded_chat_images = []  # チャット入力時の画像添付用
 
         # Vision Analyzerの状態チェック
         if not st.session_state.vision_analyzer.api_key_valid:
@@ -188,7 +187,6 @@ def sidebar():
     st.sidebar.markdown("---")
     if st.sidebar.button("🗑️ チャット履歴をリセット", type="secondary"):
         st.session_state.chat_history = []
-        st.session_state.uploaded_chat_images = []
         # 入力フォームをクリアするためのフラグ
         if 'chat_input_key' not in st.session_state:
             st.session_state.chat_input_key = 0
@@ -440,60 +438,6 @@ def confirm_delete_dialog():
         st.error("PDFが見つかりませんでした")
 
 
-@st.dialog("📎 画像を添付")
-def show_image_upload_dialog():
-    """画像アップロードダイアログ"""
-    st.write("質問と一緒に送信する画像を選択してください（最大5枚）")
-
-    # 画像アップローダー
-    uploaded_files = st.file_uploader(
-        "画像を選択（PNG, JPG, JPEG, WEBP）",
-        type=['png', 'jpg', 'jpeg', 'webp'],
-        accept_multiple_files=True,
-        key="image_uploader_dialog"
-    )
-
-    # アップロードされた画像をセッション状態に保存
-    if uploaded_files:
-        from io import BytesIO
-        st.session_state.uploaded_chat_images = [BytesIO(f.read()) for f in uploaded_files[:5]]
-
-    # 現在添付されている画像の表示
-    if st.session_state.get('uploaded_chat_images', []):
-        st.markdown("---")
-        st.subheader(f"📷 添付された画像: {len(st.session_state.uploaded_chat_images)}枚")
-
-        # プレビュー表示
-        cols = st.columns(min(len(st.session_state.uploaded_chat_images), 3))
-        for idx, (col, img_bytes) in enumerate(zip(cols, st.session_state.uploaded_chat_images)):
-            with col:
-                img_bytes.seek(0)
-                st.image(img_bytes, use_container_width=True, caption=f"画像 {idx+1}")
-                if st.button(f"🗑️ 削除", key=f"remove_img_dialog_{idx}", use_container_width=True):
-                    st.session_state.uploaded_chat_images.pop(idx)
-                    st.rerun()
-
-        st.markdown("---")
-
-        # アクションボタン
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✅ 完了", type="primary", use_container_width=True):
-                st.session_state.show_image_dialog = False
-                st.rerun()
-        with col2:
-            if st.button("🗑️ すべて削除", type="secondary", use_container_width=True):
-                st.session_state.uploaded_chat_images = []
-                st.rerun()
-    else:
-        st.info("画像がまだ選択されていません")
-
-        # 閉じるボタン
-        if st.button("閉じる", use_container_width=True):
-            st.session_state.show_image_dialog = False
-            st.rerun()
-
-
 def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
     """PDFを新しいタブで開くリンクまたはダウンロードボタンを表示"""
     import os
@@ -695,25 +639,10 @@ def main_area():
                                 st.markdown("---")
                             source_idx += 1
 
-    # 添付画像のプレビュー表示
-    num_images = len(st.session_state.get('uploaded_chat_images', []))
-    if num_images > 0:
-        st.caption(f"📷 {num_images}枚の画像が添付されています")
-
-    # 画像アップロードダイアログ
-    if st.session_state.get('show_image_dialog', False):
-        show_image_upload_dialog()
-
-    # カスタムチャット入力（ボタンを同じ行に配置）
-    col1, col2, col3 = st.columns([0.6, 8, 1])
+    # カスタムチャット入力
+    col1, col2 = st.columns([9, 1])
 
     with col1:
-        # 📎ボタン（画像添付）
-        button_label = f"📎 {num_images}" if num_images > 0 else "📎"
-        if st.button(button_label, key="open_image_dialog", help="画像を添付する", use_container_width=True):
-            st.session_state.show_image_dialog = True
-
-    with col2:
         # テキスト入力（リセット時にクリアするため動的キーを使用）
         if 'chat_input_key' not in st.session_state:
             st.session_state.chat_input_key = 0
@@ -724,7 +653,7 @@ def main_area():
             label_visibility="collapsed"
         )
 
-    with col3:
+    with col2:
         # 送信ボタン（動的キーを使用）
         send_button = st.button("▶", key=f"send_button_{st.session_state.chat_input_key}", help="送信", use_container_width=True, type="primary")
 
@@ -763,19 +692,11 @@ def main_area():
                     # 最後のユーザーメッセージを除いた履歴を渡す（現在の質問は含めない）
                     chat_history_for_query = [msg for msg in st.session_state.chat_history[:-1]]
 
-                    # アップロードされた画像を取得（コピーを作成）
-                    from io import BytesIO
-                    uploaded_images = None
-                    if st.session_state.uploaded_chat_images:
-                        # BytesIOオブジェクトのコピーを作成
-                        uploaded_images = [BytesIO(img.getvalue()) for img in st.session_state.uploaded_chat_images]
-
                     for chunk_data in st.session_state.rag_engine.query_stream(
                         question,
                         category_filter,
                         model_type=st.session_state.selected_model,
-                        chat_history=chat_history_for_query,
-                        uploaded_images=uploaded_images
+                        chat_history=chat_history_for_query
                     ):
                         if chunk_data["type"] == "context":
                             # コンテキスト情報を保存
@@ -803,19 +724,12 @@ def main_area():
                         answer_placeholder.empty()
                         with st.spinner(f"回答を生成中... ({current_model_display})"):
                             chat_history_for_query = [msg for msg in st.session_state.chat_history[:-1]]
-                            # アップロードされた画像を取得（コピーを作成）
-                            from io import BytesIO
-                            uploaded_images = None
-                            if st.session_state.uploaded_chat_images:
-                                # BytesIOオブジェクトのコピーを作成
-                                uploaded_images = [BytesIO(img.getvalue()) for img in st.session_state.uploaded_chat_images]
 
                             result_data = st.session_state.rag_engine.query(
                                 question,
                                 category_filter,
                                 model_type=st.session_state.selected_model,
-                                chat_history=chat_history_for_query,
-                                uploaded_images=uploaded_images
+                                chat_history=chat_history_for_query
                             )
                         answer_placeholder.markdown(result_data['answer'])
                     else:
@@ -912,9 +826,6 @@ def main_area():
                     "content": result_data['answer'],
                     "sources": result_data.get('sources', [])
                 })
-
-                # アップロードされた画像をクリア
-                st.session_state.uploaded_chat_images = []
 
                 # 再描画して履歴を更新
                 st.rerun()
