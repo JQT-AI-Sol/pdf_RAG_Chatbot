@@ -93,10 +93,15 @@ class VisionAnalyzer:
                 raise FileNotFoundError(error_msg)
 
             # プロンプト選択
-            if content_type == "table":
+            if content_type in ["table", "full_page"]:
+                # 表およびページ全体は平文テキスト形式で抽出
                 prompt = self.vision_config.get("analysis_prompt_table", "")
-            else:
+            elif content_type == "graph":
+                # グラフはJSON形式で構造化データを抽出
                 prompt = self.vision_config.get("analysis_prompt_graph", "")
+            else:
+                # デフォルトは平文テキスト形式
+                prompt = self.vision_config.get("analysis_prompt_table", "")
 
             if not prompt:
                 error_msg = f"No prompt configured for content_type: {content_type}"
