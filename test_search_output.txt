@@ -1,0 +1,34 @@
+Could not verify/create storage bucket: {'statusCode': 403, 'error': Unauthorized, 'message': new row violates row-level security policy}. Continuing anyway...
+================================================================================
+質問: 
+常時雇用する労働者が25人であるサービス業の事業主（小規模企業に該当）が、「短時間労働者労働時間延長支援コース」を利用します。
+
+対象労働者Aさんの週所定労働時間を3時間30分延長し、基本給を10%増額しました。
+対象労働者Bさんの週所定労働時間を5時間延長しました（基本給の増額はなし）。
+
+この事業主が1年目に受け取れる助成額は、AさんとBさんそれぞれいくらですか？
+
+================================================================================
+
+[1] 質問のエンベディング取得中...
+   エンベディング次元数: 3072
+
+[2] ベクトル検索実行中...
+
+   取得されたテキストチャンク数: 5
+
+   --- チャンク 1 ---
+   RAW DATA: {'id': 'text_2c59fd3179284cd2', 'document': '\n[表 2]\n| 週所定労働時間\nの延長 | 賃金の\n増額 | 1人当たり\n助成額 |\n| --- | --- | --- |\n| 4時間以上 | ー | 30万円 |\n| 3時間以上\n4時間未満 | ５％以上 |  |\n| 2時間以上\n3時間未満 | 10％以上 |  |\n| １時間以上\n2時間未満 | 15％以上 |  |\n', 'metadata': {'source_file': 'キャリアアップ助成金.pdf', 'page_number': 15, 'category': 'キャリアアップ助成金'}, 'distance': 0.36438735511227505}
+   Source: N/A
+   Page: N/A
+   Content Type: N/A
+   Content Length: 0 chars
+   Content Preview (最初500文字):
+   
+
+   --- チャンク 2 ---
+Traceback (most recent call last):
+  File "C:\Users\r0u8b\DEV\PoC_chatbot\test_vector_search.py", line 59, in <module>
+    print(f"   RAW DATA: {chunk}")  # 生データを表示
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp932' codec can't encode character '\u2022' in position 841: illegal multibyte sequence

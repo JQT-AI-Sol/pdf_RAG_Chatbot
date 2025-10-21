@@ -323,14 +323,13 @@ class VectorStore:
                 if response.data:
                     results['text'] = [
                         {
-                            'id': row['id'],
-                            'document': row['content'],
-                            'metadata': {
-                                'source_file': row['source_file'],
-                                'page_number': row['page_number'],
-                                'category': row['category']
-                            },
-                            'distance': 1 - row['similarity']  # Convert similarity to distance
+                            'id': row.get('id'),
+                            'content': row.get('document', row.get('content', '')),  # documentまたはcontentフィールド
+                            'source_file': row.get('metadata', {}).get('source_file', row.get('source_file', '')),
+                            'page_number': row.get('metadata', {}).get('page_number', row.get('page_number', 0)),
+                            'category': row.get('metadata', {}).get('category', row.get('category', '')),
+                            'content_type': row.get('metadata', {}).get('content_type', row.get('content_type', 'text')),
+                            'distance': row.get('distance', 1 - row.get('similarity', 0))
                         }
                         for row in response.data
                     ]
@@ -350,16 +349,14 @@ class VectorStore:
                 if response.data:
                     results['images'] = [
                         {
-                            'id': row['id'],
-                            'document': row['content'],
-                            'metadata': {
-                                'source_file': row['source_file'],
-                                'page_number': row['page_number'],
-                                'category': row['category'],
-                                'content_type': row['content_type'],
-                                'image_path': row.get('image_path', '')
-                            },
-                            'distance': 1 - row['similarity']
+                            'id': row.get('id'),
+                            'description': row.get('document', row.get('content', '')),  # documentまたはcontentフィールド
+                            'source_file': row.get('metadata', {}).get('source_file', row.get('source_file', '')),
+                            'page_number': row.get('metadata', {}).get('page_number', row.get('page_number', 0)),
+                            'category': row.get('metadata', {}).get('category', row.get('category', '')),
+                            'content_type': row.get('metadata', {}).get('content_type', row.get('content_type', 'image')),
+                            'path': row.get('metadata', {}).get('image_path', row.get('image_path', '')),
+                            'distance': row.get('distance', 1 - row.get('similarity', 0))
                         }
                         for row in response.data
                     ]
