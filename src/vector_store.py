@@ -322,8 +322,8 @@ class VectorStore:
 
                 # デバッグ: 実際のレスポンスを確認
                 if response.data and len(response.data) > 0:
-                    logger.info(f"[DEBUG] First text result keys: {list(response.data[0].keys())}")
-                    logger.info(f"[DEBUG] First text result data: {response.data[0]}")
+                    logger.info(f"Supabase text result - Keys: {list(response.data[0].keys())}")
+                    logger.info(f"Supabase text result - Sample data: source_file={response.data[0].get('source_file')}, page={response.data[0].get('page_number')}, category={response.data[0].get('category')}")
 
                 if response.data:
                     results['text'] = [
@@ -359,8 +359,8 @@ class VectorStore:
 
                 # デバッグ: 実際のレスポンスを確認
                 if response.data and len(response.data) > 0:
-                    logger.info(f"[DEBUG] First image result keys: {list(response.data[0].keys())}")
-                    logger.info(f"[DEBUG] First image result data: {response.data[0]}")
+                    logger.info(f"Supabase image result - Keys: {list(response.data[0].keys())}")
+                    logger.info(f"Supabase image result - Sample data: source_file={response.data[0].get('source_file')}, page={response.data[0].get('page_number')}, category={response.data[0].get('category')}")
 
                 if response.data:
                     results['images'] = [
