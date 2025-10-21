@@ -320,6 +320,11 @@ class VectorStore:
                     }
                 ).execute()
 
+                # デバッグ: 実際のレスポンスを確認
+                if response.data and len(response.data) > 0:
+                    logger.info(f"[DEBUG] First text result keys: {list(response.data[0].keys())}")
+                    logger.info(f"[DEBUG] First text result data: {response.data[0]}")
+
                 if response.data:
                     results['text'] = [
                         {
@@ -351,6 +356,11 @@ class VectorStore:
                         'filter_category': category
                     }
                 ).execute()
+
+                # デバッグ: 実際のレスポンスを確認
+                if response.data and len(response.data) > 0:
+                    logger.info(f"[DEBUG] First image result keys: {list(response.data[0].keys())}")
+                    logger.info(f"[DEBUG] First image result data: {response.data[0]}")
 
                 if response.data:
                     results['images'] = [
