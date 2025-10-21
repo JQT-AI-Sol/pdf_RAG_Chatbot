@@ -79,6 +79,15 @@ class VisionAnalyzer:
         """
         logger.info(f"Analyzing {content_type} image with Gemini: {image_path}")
 
+        # Langfuseコンテキストのインポート（詳細トレース用）
+        if LANGFUSE_AVAILABLE:
+            try:
+                from langfuse.decorators import langfuse_context
+            except ImportError:
+                langfuse_context = None
+        else:
+            langfuse_context = None
+
         # APIキーチェック
         if not self.api_key_valid or self.model is None:
             error_msg = "GEMINI_API_KEY is not set or invalid. Vision analysis is disabled. Please set GEMINI_API_KEY in your .env file."
@@ -112,6 +121,28 @@ class VisionAnalyzer:
             logger.warning(f"[DEBUG] Using prompt (first 100 chars): {prompt[:100]}...")
             logger.warning(f"[DEBUG] Content type: {content_type}")
 
+            # Langfuseにプロンプト詳細を記録
+            if langfuse_context:
+                try:
+                    langfuse_context.update_current_trace(
+                        metadata={
+                            "content_type": content_type,
+                            "image_path": image_path,
+                            "model": self.model_name,
+                            "prompt_length": len(prompt)
+                        }
+                    )
+                    langfuse_context.update_current_observation(
+                        input=prompt,  # プロンプト全文をLangfuseに記録
+                        metadata={
+                            "image_path": image_path,
+                            "content_type": content_type,
+                            "prompt_first_100_chars": prompt[:100]
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update Langfuse context: {e}")
+
             # 画像を開く
             image = Image.open(image_path)
             logger.debug(f"Image loaded: {image_path}")
@@ -126,13 +157,71 @@ class VisionAnalyzer:
                     logger.error(error_msg)
                     raise ValueError(error_msg)
 
-                analysis_result = response.text
-                logger.debug(f"Gemini API response length: {len(analysis_result)} characters")
+                raw_response = response.text
+                logger.debug(f"Gemini API response length: {len(raw_response)} characters")
+
+                # Langfuseに生応答を記録
+                has_json_block = "```json" in raw_response.lower()
+                starts_with_brace = raw_response.strip().startswith("{")
+
+                if langfuse_context:
+                    try:
+                        langfuse_context.update_current_observation(
+                            output=raw_response,  # Geminiの生応答
+                            metadata={
+                                "response_length": len(raw_response),
+                                "has_json_block": has_json_block,
+                                "starts_with_brace": starts_with_brace,
+                                "response_first_200_chars": raw_response[:200]
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update Langfuse with response: {e}")
+
+                analysis_result = raw_response
 
             except Exception as e:
                 error_msg = f"Gemini API call failed for {image_path}: {type(e).__name__}: {str(e)}"
                 logger.error(error_msg)
                 raise
+
+            # 平文テキストプロンプトを使用した場合、Geminiが勝手にJSON形式で返すことがあるので、
+            # JSONブロックを検出して警告し、平文に変換する
+            json_removed = False
+            if content_type in ["table", "full_page"]:
+                if "```json" in analysis_result.lower() or analysis_result.strip().startswith("{"):
+                    logger.warning(f"[ISSUE] Gemini returned JSON format despite plain text prompt for {content_type}")
+                    logger.warning(f"[ISSUE] Original response (first 200 chars): {analysis_result[:200]}")
+
+                    # JSONブロックを除去して平文に変換
+                    # パターン1: ```json ... ``` ブロック
+                    import re
+                    cleaned = re.sub(r'```json.*?```', '', analysis_result, flags=re.DOTALL | re.IGNORECASE)
+                    # パターン2: ```...``` ブロック（言語指定なし）
+                    cleaned = re.sub(r'```.*?```', '', cleaned, flags=re.DOTALL)
+                    # 前後の説明文だけを残す
+                    cleaned = cleaned.strip()
+
+                    if cleaned and len(cleaned) > 50:
+                        analysis_result = cleaned
+                        json_removed = True
+                        logger.warning(f"[FIX] Converted to plain text ({len(analysis_result)} chars)")
+                    else:
+                        logger.warning(f"[FIX] Could not extract plain text, keeping original")
+
+            # Langfuseに後処理結果を記録
+            if langfuse_context and json_removed:
+                try:
+                    langfuse_context.update_current_trace(
+                        metadata={
+                            "json_removed": True,
+                            "original_length": len(raw_response),
+                            "cleaned_length": len(analysis_result),
+                            "final_result_first_200_chars": analysis_result[:200]
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update Langfuse with cleanup info: {e}")
 
             result = {
                 "content_type": content_type,
