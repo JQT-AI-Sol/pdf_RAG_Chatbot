@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from .vector_store import VectorStore
-from .category_manager import CategoryManager
 
 
 logger = logging.getLogger(__name__)
@@ -17,17 +16,15 @@ logger = logging.getLogger(__name__)
 class PDFManager:
     """PDFファイルとその関連データを管理するクラス"""
 
-    def __init__(self, vector_store: VectorStore, category_manager: CategoryManager, config: dict):
+    def __init__(self, vector_store: VectorStore, config: dict):
         """
         初期化
 
         Args:
             vector_store: VectorStoreインスタンス
-            category_manager: CategoryManagerインスタンス
             config: 設定
         """
         self.vector_store = vector_store
-        self.category_manager = category_manager
         self.config = config
 
     def get_registered_pdfs(self):
@@ -122,11 +119,10 @@ class PDFManager:
                 remaining_pdfs = self.vector_store.get_registered_pdfs()
                 category_has_pdfs = any(pdf['category'] == category for pdf in remaining_pdfs)
 
-                # カテゴリー内にPDFがなくなった場合、カテゴリーを削除
+                # カテゴリー内にPDFがなくなった場合の記録（カテゴリーはSupabaseから動的に取得されるため削除不要）
                 if not category_has_pdfs:
-                    if self.category_manager.remove_category(category):
-                        result['category_deleted'] = True
-                        logger.info(f"Deleted empty category: {category}")
+                    result['category_deleted'] = True
+                    logger.info(f"No more PDFs in category: {category}")
 
             result['success'] = True
             result['message'] = f"Successfully deleted {source_file} and all related data"

@@ -9,7 +9,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # src モジュールのインポート
 from src.utils import load_config, load_environment, ensure_directories, setup_logging, encode_pdf_to_base64
-from src.category_manager import CategoryManager
 from src.pdf_processor import PDFProcessor
 from src.text_embedder import TextEmbedder
 from src.vision_analyzer import VisionAnalyzer
@@ -44,9 +43,6 @@ def initialize_app():
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
         st.session_state.config = config
-        st.session_state.category_manager = CategoryManager(
-            config['category']['storage_file']
-        )
         st.session_state.pdf_processor = PDFProcessor(config)
         st.session_state.embedder = TextEmbedder(config)
         st.session_state.vision_analyzer = VisionAnalyzer(config)
@@ -58,7 +54,6 @@ def initialize_app():
         )
         st.session_state.pdf_manager = PDFManager(
             st.session_state.vector_store,
-            st.session_state.category_manager,
             config
         )
         st.session_state.chat_history = []
@@ -111,7 +106,7 @@ def sidebar():
 
     # 登録済みカテゴリー表示
     st.sidebar.subheader("📂 登録済みカテゴリー")
-    categories = st.session_state.category_manager.get_all_categories()
+    categories = st.session_state.vector_store.get_all_categories()
     if categories:
         for cat in categories:
             st.sidebar.text(f"• {cat}")
@@ -158,7 +153,7 @@ def sidebar():
     st.sidebar.subheader("🤖 チャット設定")
 
     # カテゴリー選択
-    categories = ["全カテゴリー"] + st.session_state.category_manager.get_all_categories()
+    categories = ["全カテゴリー"] + st.session_state.vector_store.get_all_categories()
     st.session_state.selected_category = st.sidebar.selectbox(
         "🔍 検索対象カテゴリー",
         categories,
@@ -189,8 +184,8 @@ def sidebar():
 
 def process_pdfs(uploaded_files, category):
     """PDFファイルを処理"""
-    # カテゴリー登録
-    st.session_state.category_manager.add_category(category)
+    # カテゴリーはSupabaseのregistered_pdfsテーブルに自動保存されるため、
+    # ローカルファイルへの保存は不要
 
     progress_bar = st.sidebar.progress(0)
     status_text = st.sidebar.empty()

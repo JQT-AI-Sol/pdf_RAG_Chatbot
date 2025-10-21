@@ -418,6 +418,21 @@ class VectorStore:
 
         return formatted
 
+    def get_all_categories(self) -> List[str]:
+        """
+        登録済みPDFから一意のカテゴリーリストを取得
+
+        Returns:
+            list: カテゴリー名のリスト（重複なし、ソート済み）
+        """
+        try:
+            pdfs = self.get_registered_pdfs()
+            categories = list(set(pdf['category'] for pdf in pdfs if pdf.get('category')))
+            return sorted(categories)
+        except Exception as e:
+            logger.error(f"Error getting categories: {e}")
+            return []
+
     def get_registered_pdfs(self) -> List[Dict[str, Any]]:
         """
         登録済みPDFのリストを取得
