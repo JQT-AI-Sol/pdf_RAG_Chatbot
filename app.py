@@ -106,12 +106,16 @@ def sidebar():
 
     # 登録済みカテゴリー表示
     st.sidebar.subheader("📂 登録済みカテゴリー")
-    categories = st.session_state.vector_store.get_all_categories()
-    if categories:
-        for cat in categories:
-            st.sidebar.text(f"• {cat}")
-    else:
-        st.sidebar.info("まだカテゴリーが登録されていません")
+    try:
+        categories = st.session_state.vector_store.get_all_categories()
+        if categories:
+            for cat in categories:
+                st.sidebar.text(f"• {cat}")
+        else:
+            st.sidebar.info("まだカテゴリーが登録されていません")
+    except Exception as e:
+        st.sidebar.error(f"カテゴリー取得エラー: {str(e)}")
+        categories = []
 
     # 登録済みPDF管理
     st.sidebar.markdown("---")
@@ -153,7 +157,12 @@ def sidebar():
     st.sidebar.subheader("🤖 チャット設定")
 
     # カテゴリー選択
-    categories = ["全カテゴリー"] + st.session_state.vector_store.get_all_categories()
+    try:
+        categories = ["全カテゴリー"] + st.session_state.vector_store.get_all_categories()
+    except Exception as e:
+        st.sidebar.warning(f"カテゴリー取得エラー: {str(e)}")
+        categories = ["全カテゴリー"]
+
     st.session_state.selected_category = st.sidebar.selectbox(
         "🔍 検索対象カテゴリー",
         categories,
