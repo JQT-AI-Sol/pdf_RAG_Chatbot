@@ -1,0 +1,391 @@
+# RAGシステム評価用テスト質問セット
+# 合計30問（カテゴリー別に分類）
+
+# ========================================
+# A. テキスト検索評価用（10問）
+# ========================================
+text_search:
+  - id: "T01"
+    question: "この製品の主な特徴は何ですか？"
+    category: "製品マニュアル"
+    expected_type: "text"
+    evaluation_criteria:
+      - "製品の主要な機能や特徴が列挙されているか"
+      - "具体的な説明が含まれているか"
+    expected_keywords: ["機能", "特徴", "性能"]
+    accuracy_weight: 1.0
+
+  - id: "T02"
+    question: "製品の保証期間について教えてください"
+    category: "製品マニュアル"
+    expected_type: "text"
+    evaluation_criteria:
+      - "保証期間が明確に記載されているか"
+      - "保証条件や範囲が説明されているか"
+    expected_keywords: ["保証", "期間", "年"]
+    accuracy_weight: 1.0
+
+  - id: "T03"
+    question: "トラブルシューティングの手順を教えてください"
+    category: "製品マニュアル"
+    expected_type: "text"
+    evaluation_criteria:
+      - "具体的な手順がステップバイステップで示されているか"
+      - "問題の特定方法が含まれているか"
+    expected_keywords: ["手順", "確認", "対処"]
+    accuracy_weight: 1.0
+
+  - id: "T04"
+    question: "システム要件は何ですか？"
+    category: "技術仕様書"
+    expected_type: "text"
+    evaluation_criteria:
+      - "必要なハードウェア・ソフトウェア要件が記載されているか"
+      - "具体的なスペックが示されているか"
+    expected_keywords: ["要件", "OS", "メモリ", "CPU"]
+    accuracy_weight: 1.0
+
+  - id: "T05"
+    question: "製品Aと製品Bの違いは何ですか？"
+    category: "製品マニュアル"
+    expected_type: "text"
+    evaluation_criteria:
+      - "両製品の比較が明確にされているか"
+      - "主要な差異が説明されているか"
+    expected_keywords: ["違い", "比較", "差"]
+    accuracy_weight: 1.0
+
+  - id: "T06"
+    question: "この機能の使用上の注意点は？"
+    category: "製品マニュアル"
+    expected_type: "text"
+    evaluation_criteria:
+      - "注意事項や警告が明記されているか"
+      - "具体的なリスクや対処法が含まれているか"
+    expected_keywords: ["注意", "警告", "禁止"]
+    accuracy_weight: 1.0
+
+  - id: "T07"
+    question: "最新のアップデート内容は？"
+    category: "運用レポート"
+    expected_type: "text"
+    evaluation_criteria:
+      - "アップデートのバージョンや日付が記載されているか"
+      - "変更内容が具体的に説明されているか"
+    expected_keywords: ["アップデート", "バージョン", "変更"]
+    accuracy_weight: 1.0
+
+  - id: "T08"
+    question: "この操作を行うための前提条件は？"
+    category: "製品マニュアル"
+    expected_type: "text"
+    evaluation_criteria:
+      - "前提条件が明確に列挙されているか"
+      - "準備すべき事項が説明されているか"
+    expected_keywords: ["前提", "条件", "必要"]
+    accuracy_weight: 1.0
+
+  - id: "T09"
+    question: "推奨される設定値を教えてください"
+    category: "技術仕様書"
+    expected_type: "text"
+    evaluation_criteria:
+      - "推奨設定が具体的に示されているか"
+      - "設定の理由や効果が説明されているか"
+    expected_keywords: ["推奨", "設定", "値"]
+    accuracy_weight: 1.0
+
+  - id: "T10"
+    question: "セキュリティに関する考慮事項は？"
+    category: "技術仕様書"
+    expected_type: "text"
+    evaluation_criteria:
+      - "セキュリティ関連の注意点が記載されているか"
+      - "具体的な対策や推奨事項が含まれているか"
+    expected_keywords: ["セキュリティ", "認証", "暗号化"]
+    accuracy_weight: 1.0
+
+# ========================================
+# B. 表検索評価用（5問）
+# ========================================
+table_search:
+  - id: "TB01"
+    question: "製品の仕様比較表を見せてください"
+    category: "製品マニュアル"
+    expected_type: "table"
+    evaluation_criteria:
+      - "仕様比較表の画像が表示されているか"
+      - "表の内容が適切に解析されているか"
+    expected_image: true
+    expected_keywords: ["仕様", "比較", "スペック"]
+    accuracy_weight: 1.0
+
+  - id: "TB02"
+    question: "各モデルの価格はいくらですか？"
+    category: "製品マニュアル"
+    expected_type: "table"
+    evaluation_criteria:
+      - "価格情報を含む表が検索されているか"
+      - "具体的な金額が回答に含まれているか"
+    expected_image: true
+    expected_keywords: ["価格", "モデル", "円"]
+    accuracy_weight: 1.0
+
+  - id: "TB03"
+    question: "対応OSの一覧を教えてください"
+    category: "技術仕様書"
+    expected_type: "table"
+    evaluation_criteria:
+      - "OS対応表が表示されているか"
+      - "各OSとそのバージョンが記載されているか"
+    expected_image: true
+    expected_keywords: ["OS", "対応", "Windows", "Mac"]
+    accuracy_weight: 1.0
+
+  - id: "TB04"
+    question: "性能ベンチマークの結果は？"
+    category: "運用レポート"
+    expected_type: "table"
+    evaluation_criteria:
+      - "ベンチマーク結果の表が検索されているか"
+      - "具体的な数値データが含まれているか"
+    expected_image: true
+    expected_keywords: ["ベンチマーク", "性能", "結果"]
+    accuracy_weight: 1.0
+
+  - id: "TB05"
+    question: "オプション機能の比較を見たい"
+    category: "製品マニュアル"
+    expected_type: "table"
+    evaluation_criteria:
+      - "オプション比較表が表示されているか"
+      - "各オプションの詳細が説明されているか"
+    expected_image: true
+    expected_keywords: ["オプション", "機能", "比較"]
+    accuracy_weight: 1.0
+
+# ========================================
+# C. グラフ検索・数値抽出評価用（5問）
+# ========================================
+graph_search:
+  - id: "G01"
+    question: "売上推移はどうなっていますか？"
+    category: "運用レポート"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "売上推移のグラフが表示されているか"
+      - "具体的な数値（期間と金額）が抽出されているか"
+      - "傾向（増加/減少）が説明されているか"
+    expected_image: true
+    expected_keywords: ["売上", "推移", "増加", "減少"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+  - id: "G02"
+    question: "市場シェアの分布を教えてください"
+    category: "運用レポート"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "市場シェアのグラフ（円グラフ等）が表示されているか"
+      - "各項目のパーセンテージが抽出されているか"
+    expected_image: true
+    expected_keywords: ["市場", "シェア", "%", "割合"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+  - id: "G03"
+    question: "各四半期の成長率は？"
+    category: "運用レポート"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "成長率を示すグラフが表示されているか"
+      - "四半期ごとの具体的な数値が抽出されているか"
+    expected_image: true
+    expected_keywords: ["四半期", "成長率", "Q1", "Q2"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+  - id: "G04"
+    question: "性能の経年変化を見せてください"
+    category: "運用レポート"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "時系列の性能グラフが表示されているか"
+      - "年ごとのデータポイントが抽出されているか"
+    expected_image: true
+    expected_keywords: ["性能", "経年", "変化", "年"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+  - id: "G05"
+    question: "最も高い数値を記録したのはいつですか？"
+    category: "運用レポート"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "該当するグラフが検索されているか"
+      - "最大値とその時期が特定されているか"
+    expected_image: true
+    expected_keywords: ["最大", "最高", "ピーク"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+# ========================================
+# D. ハイブリッド検索評価用（5問）
+# ========================================
+hybrid_search:
+  - id: "H01"
+    question: "製品の性能データと改善傾向を教えてください"
+    category: "全カテゴリー"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "テキストによる説明とグラフの両方が含まれているか"
+      - "性能データと改善傾向が統合的に説明されているか"
+    expected_image: true
+    expected_keywords: ["性能", "データ", "改善", "傾向"]
+    accuracy_weight: 1.0
+
+  - id: "H02"
+    question: "コスト構造とその内訳を説明してください"
+    category: "運用レポート"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "テキスト説明と表/グラフが組み合わされているか"
+      - "コスト項目と割合が明確に示されているか"
+    expected_image: true
+    expected_keywords: ["コスト", "構造", "内訳"]
+    accuracy_weight: 1.0
+
+  - id: "H03"
+    question: "売上目標と実績を比較してください"
+    category: "運用レポート"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "目標と実績の両方が示されているか"
+      - "比較グラフまたは表が表示されているか"
+      - "差異や達成率が説明されているか"
+    expected_image: true
+    expected_keywords: ["目標", "実績", "比較", "達成"]
+    accuracy_weight: 1.0
+
+  - id: "H04"
+    question: "市場動向のサマリーを教えてください"
+    category: "運用レポート"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "テキストのサマリーとデータの両方が含まれているか"
+      - "複数の情報源から統合された回答か"
+    expected_image: true
+    expected_keywords: ["市場", "動向", "トレンド"]
+    accuracy_weight: 1.0
+
+  - id: "H05"
+    question: "製品ロードマップと過去の実績は？"
+    category: "全カテゴリー"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "将来計画と過去データの両方が含まれているか"
+      - "時系列的な整合性があるか"
+    expected_image: true
+    expected_keywords: ["ロードマップ", "実績", "計画"]
+    accuracy_weight: 1.0
+
+# ========================================
+# E. カテゴリーフィルタリング評価用（5問）
+# ========================================
+category_filtering:
+  - id: "C01"
+    question: "使い方を教えて"
+    category: "製品マニュアル"
+    expected_type: "text"
+    evaluation_criteria:
+      - "製品マニュアルカテゴリーのみから検索されているか"
+      - "他カテゴリーの情報が混入していないか"
+      - "参照元に正しいカテゴリーが表示されているか"
+    expected_keywords: ["使い方", "手順", "操作"]
+    verify_category_filter: true
+    accuracy_weight: 1.0
+
+  - id: "C02"
+    question: "APIの仕様は？"
+    category: "技術仕様書"
+    expected_type: "text"
+    evaluation_criteria:
+      - "技術仕様書カテゴリーのみから検索されているか"
+      - "API仕様の詳細が含まれているか"
+    expected_keywords: ["API", "仕様", "エンドポイント"]
+    verify_category_filter: true
+    accuracy_weight: 1.0
+
+  - id: "C03"
+    question: "先月の実績は？"
+    category: "運用レポート"
+    expected_type: "text"
+    evaluation_criteria:
+      - "運用レポートカテゴリーのみから検索されているか"
+      - "先月の具体的なデータが含まれているか"
+    expected_keywords: ["先月", "実績", "結果"]
+    verify_category_filter: true
+    accuracy_weight: 1.0
+
+  - id: "C04"
+    question: "システム全体の概要は？"
+    category: "全カテゴリー"
+    expected_type: "text"
+    evaluation_criteria:
+      - "複数カテゴリーから情報が統合されているか"
+      - "包括的な回答が提供されているか"
+    expected_keywords: ["概要", "システム", "全体"]
+    verify_category_filter: false
+    accuracy_weight: 1.0
+
+  - id: "C05"
+    question: "詳細な技術情報が欲しい"
+    category: "技術仕様書"
+    expected_type: "text"
+    evaluation_criteria:
+      - "技術仕様書カテゴリーから適切な情報が検索されているか"
+      - "技術的な詳細が含まれているか"
+    expected_keywords: ["技術", "詳細", "仕様"]
+    verify_category_filter: true
+    accuracy_weight: 1.0
+
+# ========================================
+# 評価設定
+# ========================================
+evaluation_settings:
+  # 精度評価スコア（5段階）
+  accuracy_scores:
+    5: "完全に正確で完璧な回答"
+    4: "ほぼ正確だが小さな不足あり"
+    3: "部分的に正確だが重要な情報が欠落"
+    2: "不正確な情報が含まれる"
+    1: "完全に不正確または無関連"
+
+  # 参照元の適切性（Binary）
+  reference_validity:
+    1: "正しい参照元を提示"
+    0: "不適切な参照元"
+
+  # 画像検索精度
+  image_search_accuracy:
+    1.0: "正しい表/グラフを表示"
+    0.5: "関連するが最適でない画像"
+    0.0: "不適切な画像または画像なし"
+
+  # 数値データ抽出精度
+  numeric_extraction_accuracy:
+    1.0: "数値が正確（±5%以内）"
+    0.5: "数値に誤差あり（±10%以内）"
+    0.0: "数値が大きく異なるor抽出失敗"
+
+  # 性能要件
+  performance_requirements:
+    max_response_time_seconds: 15
+    max_index_time_per_page_seconds: 20
+
+  # 成功基準（要件定義書より）
+  success_criteria:
+    text_accuracy_threshold: 0.85  # 85%以上
+    table_accuracy_threshold: 0.80  # 80%以上
+    graph_numeric_accuracy_threshold: 0.70  # 70%以上
+    category_filter_accuracy: 1.00  # 100%

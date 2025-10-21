@@ -167,7 +167,7 @@ class RAGEngine:
 
         return messages
 
-    def query(self, question: str, category: Optional[str] = None, model_type: str = "openai", chat_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+    def query(self, question: str, category: Optional[str] = None, model_type: str = "openai", chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None) -> Dict[str, Any]:
         """
         質問に対して回答を生成
 
@@ -176,6 +176,7 @@ class RAGEngine:
             category: 検索対象カテゴリー（Noneの場合は全カテゴリー）
             model_type: 使用するモデル ("openai" or "gemini")
             chat_history: 会話履歴（Noneの場合は会話履歴なし）
+            uploaded_images: ユーザーがアップロードした画像のリスト（BytesIOオブジェクト）
 
         Returns:
             dict: 回答と関連情報
@@ -223,9 +224,9 @@ class RAGEngine:
 
             # 4. LLMで回答生成
             if model_type == "openai":
-                answer = self._generate_answer_openai(question, context_text, image_data_list, chat_history)
+                answer = self._generate_answer_openai(question, context_text, image_data_list, chat_history, uploaded_images)
             else:
-                answer = self._generate_answer_gemini(question, context_text, image_data_list, chat_history)
+                answer = self._generate_answer_gemini(question, context_text, image_data_list, chat_history, uploaded_images)
 
             return {
                 "answer": answer,
@@ -238,15 +239,16 @@ class RAGEngine:
             logger.error(f"Error in query: {e}")
             raise
 
-    def _generate_answer_openai(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None) -> str:
+    def _generate_answer_openai(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None) -> str:
         """
         OpenAIで回答を生成
 
         Args:
             question: 質問
             context: コンテキスト
-            image_data_list: 画像データのリスト
+            image_data_list: 画像データのリスト（ベクトル検索結果）
             chat_history: 会話履歴
+            uploaded_images: ユーザーがアップロードした画像のリスト（BytesIOオブジェクト）
 
         Returns:
             str: 回答
@@ -265,12 +267,35 @@ class RAGEngine:
         # 画像を含むコンテンツの構築
         content_parts = [{"type": "text", "text": prompt_text}]
 
-        for img_data in image_data_list[:5]:  # 最大5枚
-            base64_image = self._encode_image_to_base64(img_data["path"])
+        # アップロードされた画像を追加（役割を明示）
+        if uploaded_images:
             content_parts.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                "type": "text",
+                "text": f"\n\n━━━ 以下、ユーザーが質問のために添付した画像（{len(uploaded_images[:5])}枚）━━━"
             })
+            for uploaded_img in uploaded_images[:5]:  # 最大5枚
+                # BytesIOオブジェクトをbase64エンコード
+                uploaded_img.seek(0)  # ファイルポインタを先頭に戻す
+                img_bytes = uploaded_img.read()
+                base64_image = base64.b64encode(img_bytes).decode("utf-8")
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                })
+
+        # ベクトル検索で取得した画像を追加（役割を明示）
+        remaining_slots = 5 - len(uploaded_images) if uploaded_images else 5
+        if image_data_list and remaining_slots > 0:
+            content_parts.append({
+                "type": "text",
+                "text": "\n\n━━━ 以下、参考コンテキストとして検索された資料の画像 ━━━"
+            })
+            for img_data in image_data_list[:remaining_slots]:
+                base64_image = self._encode_image_to_base64(img_data["path"])
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                })
 
         messages.append(HumanMessage(content=content_parts))
 
@@ -278,15 +303,16 @@ class RAGEngine:
         response = self.openai_llm.invoke(messages)
         return response.content
 
-    def _generate_answer_gemini(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None) -> str:
+    def _generate_answer_gemini(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None) -> str:
         """
         Geminiで回答を生成 (Native SDK使用)
 
         Args:
             question: 質問
             context: コンテキスト
-            image_data_list: 画像データのリスト
+            image_data_list: 画像データのリスト（ベクトル検索結果）
             chat_history: 会話履歴
+            uploaded_images: ユーザーがアップロードした画像のリスト（BytesIOオブジェクト）
 
         Returns:
             str: 回答
@@ -310,22 +336,39 @@ class RAGEngine:
                 history_text += f"{role_label}: {content}\n\n"
             prompt_text = history_text + "\n" + prompt_text
 
-        # コンテンツの構築
+        # プロンプトテキストに画像の説明を追加
+        if uploaded_images:
+            prompt_text += f"\n\n━━━ 以下、ユーザーが質問のために添付した画像（{len(uploaded_images[:5])}枚）━━━"
+
+        remaining_slots = 5 - len(uploaded_images) if uploaded_images else 5
+        if image_data_list and remaining_slots > 0:
+            prompt_text += "\n\n━━━ 以下、参考コンテキストとして検索された資料の画像 ━━━"
+
+        # コンテンツの構築（テキストを先に、画像を後に）
         content_parts = [prompt_text]
 
-        # 画像を追加（Gemini SDK形式）
+        # アップロードされた画像を追加
         from PIL import Image
-        for img_data in image_data_list[:5]:  # 最大5枚
-            img_path = Path(img_data["path"])
-            if img_path.exists():
-                image = Image.open(img_path)
+        if uploaded_images:
+            for uploaded_img in uploaded_images[:5]:  # 最大5枚
+                # BytesIOオブジェクトをPIL Imageに変換
+                uploaded_img.seek(0)  # ファイルポインタを先頭に戻す
+                image = Image.open(uploaded_img)
                 content_parts.append(image)
+
+        # ベクトル検索で取得した画像を追加
+        if image_data_list and remaining_slots > 0:
+            for img_data in image_data_list[:remaining_slots]:
+                img_path = Path(img_data["path"])
+                if img_path.exists():
+                    image = Image.open(img_path)
+                    content_parts.append(image)
 
         # Gemini API呼び出し
         response = self.gemini_model.generate_content(content_parts)
         return response.text
 
-    def query_stream(self, question: str, category: Optional[str] = None, model_type: str = "openai", chat_history: Optional[List[Dict[str, str]]] = None):
+    def query_stream(self, question: str, category: Optional[str] = None, model_type: str = "openai", chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None):
         """
         質問に対してストリーミングで回答を生成
 
@@ -334,6 +377,7 @@ class RAGEngine:
             category: 検索対象カテゴリー（Noneの場合は全カテゴリー）
             model_type: 使用するモデル ("openai" or "gemini")
             chat_history: 会話履歴（Noneの場合は会話履歴なし）
+            uploaded_images: ユーザーがアップロードした画像のリスト（BytesIOオブジェクト）
 
         Yields:
             dict: 回答の断片と関連情報
@@ -389,23 +433,24 @@ class RAGEngine:
 
             # 4. LLMでストリーミング回答生成
             if model_type == "openai":
-                yield from self._stream_answer_openai(question, context_text, image_data_list, chat_history)
+                yield from self._stream_answer_openai(question, context_text, image_data_list, chat_history, uploaded_images)
             else:
-                yield from self._stream_answer_gemini(question, context_text, image_data_list, chat_history)
+                yield from self._stream_answer_gemini(question, context_text, image_data_list, chat_history, uploaded_images)
 
         except Exception as e:
             logger.error(f"Error in query_stream: {e}")
             raise
 
-    def _stream_answer_openai(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None):
+    def _stream_answer_openai(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None):
         """
         OpenAIでストリーミング回答を生成
 
         Args:
             question: 質問
             context: コンテキスト
-            image_data_list: 画像データのリスト
+            image_data_list: 画像データのリスト（ベクトル検索結果）
             chat_history: 会話履歴
+            uploaded_images: ユーザーがアップロードした画像のリスト（BytesIOオブジェクト）
 
         Yields:
             dict: 回答の断片
@@ -424,12 +469,35 @@ class RAGEngine:
         # 画像を含むコンテンツの構築
         content_parts = [{"type": "text", "text": prompt_text}]
 
-        for img_data in image_data_list[:5]:  # 最大5枚
-            base64_image = self._encode_image_to_base64(img_data["path"])
+        # アップロードされた画像を追加（役割を明示）
+        if uploaded_images:
             content_parts.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                "type": "text",
+                "text": f"\n\n━━━ 以下、ユーザーが質問のために添付した画像（{len(uploaded_images[:5])}枚）━━━"
             })
+            for uploaded_img in uploaded_images[:5]:  # 最大5枚
+                # BytesIOオブジェクトをbase64エンコード
+                uploaded_img.seek(0)  # ファイルポインタを先頭に戻す
+                img_bytes = uploaded_img.read()
+                base64_image = base64.b64encode(img_bytes).decode("utf-8")
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                })
+
+        # ベクトル検索で取得した画像を追加（役割を明示）
+        remaining_slots = 5 - len(uploaded_images) if uploaded_images else 5
+        if image_data_list and remaining_slots > 0:
+            content_parts.append({
+                "type": "text",
+                "text": "\n\n━━━ 以下、参考コンテキストとして検索された資料の画像 ━━━"
+            })
+            for img_data in image_data_list[:remaining_slots]:
+                base64_image = self._encode_image_to_base64(img_data["path"])
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                })
 
         messages.append(HumanMessage(content=content_parts))
 
@@ -443,15 +511,16 @@ class RAGEngine:
                 }
         logger.debug("OpenAI streaming completed")
 
-    def _stream_answer_gemini(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None):
+    def _stream_answer_gemini(self, question: str, context: str, image_data_list: List[Dict], chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None):
         """
         Geminiでストリーミング回答を生成 (Native SDK使用)
 
         Args:
             question: 質問
             context: コンテキスト
-            image_data_list: 画像データのリスト
+            image_data_list: 画像データのリスト（ベクトル検索結果）
             chat_history: 会話履歴
+            uploaded_images: ユーザーがアップロードした画像のリスト（BytesIOオブジェクト）
 
         Yields:
             dict: 回答の断片
@@ -475,16 +544,33 @@ class RAGEngine:
                 history_text += f"{role_label}: {content}\n\n"
             prompt_text = history_text + "\n" + prompt_text
 
-        # コンテンツの構築
+        # プロンプトテキストに画像の説明を追加
+        if uploaded_images:
+            prompt_text += f"\n\n━━━ 以下、ユーザーが質問のために添付した画像（{len(uploaded_images[:5])}枚）━━━"
+
+        remaining_slots = 5 - len(uploaded_images) if uploaded_images else 5
+        if image_data_list and remaining_slots > 0:
+            prompt_text += "\n\n━━━ 以下、参考コンテキストとして検索された資料の画像 ━━━"
+
+        # コンテンツの構築（テキストを先に、画像を後に）
         content_parts = [prompt_text]
 
-        # 画像を追加（Gemini SDK形式）
+        # アップロードされた画像を追加
         from PIL import Image
-        for img_data in image_data_list[:5]:  # 最大5枚
-            img_path = Path(img_data["path"])
-            if img_path.exists():
-                image = Image.open(img_path)
+        if uploaded_images:
+            for uploaded_img in uploaded_images[:5]:  # 最大5枚
+                # BytesIOオブジェクトをPIL Imageに変換
+                uploaded_img.seek(0)  # ファイルポインタを先頭に戻す
+                image = Image.open(uploaded_img)
                 content_parts.append(image)
+
+        # ベクトル検索で取得した画像を追加
+        if image_data_list and remaining_slots > 0:
+            for img_data in image_data_list[:remaining_slots]:
+                img_path = Path(img_data["path"])
+                if img_path.exists():
+                    image = Image.open(img_path)
+                    content_parts.append(image)
 
         # Gemini APIストリーミング呼び出し
         logger.debug("Starting Gemini streaming...")

@@ -1,0 +1,303 @@
+# 実際のドキュメントに基づいた現実的なテスト質問セット
+# 既存データ: 女性活躍推進、働き方改革、派遣労働者の労働条件・安全衛生
+
+# ========================================
+# A. テキスト検索評価用（10問）
+# ========================================
+text_search:
+  - id: "T01"
+    question: "女性活躍推進法に基づく一般事業主行動計画について教えてください"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "行動計画の策定義務について説明されているか"
+      - "対象となる事業主の規模が記載されているか"
+    expected_keywords: ["行動計画", "事業主", "女性活躍"]
+    accuracy_weight: 1.0
+
+  - id: "T02"
+    question: "なぜ女性の活躍推進が必要なのですか？"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "労働力不足や社会的背景が説明されているか"
+      - "具体的なデータや統計が含まれているか"
+    expected_keywords: ["労働力", "ダイバーシティ", "少子高齢化"]
+    accuracy_weight: 1.0
+
+  - id: "T03"
+    question: "一般事業主が行うべき取組の流れを教えてください"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "STEP形式で手順が説明されているか"
+      - "状況把握、課題分析、計画策定などの流れが含まれているか"
+    expected_keywords: ["STEP", "状況把握", "課題分析", "計画"]
+    accuracy_weight: 1.0
+
+  - id: "T04"
+    question: "女性の活躍に関する状況把握では何を確認する必要がありますか？"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "基礎項目や選択項目について説明されているか"
+      - "具体的な把握項目が列挙されているか"
+    expected_keywords: ["状況把握", "基礎項目", "採用", "継続就業"]
+    accuracy_weight: 1.0
+
+  - id: "T05"
+    question: "女性労働者の割合や管理職に関するデータはありますか？"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "具体的な数値データが含まれているか"
+      - "男女比や管理職比率について言及されているか"
+    expected_keywords: ["割合", "管理職", "女性", "データ"]
+    accuracy_weight: 1.0
+
+  - id: "T06"
+    question: "高度プロフェッショナル制度について説明してください"
+    category: "働き方改革"
+    expected_type: "text"
+    evaluation_criteria:
+      - "制度の概要が説明されているか"
+      - "対象となる業務や労働者について記載されているか"
+    expected_keywords: ["高度プロフェッショナル", "制度", "労働時間"]
+    accuracy_weight: 1.0
+
+  - id: "T07"
+    question: "労働時間の状況把握に関する基準を教えてください"
+    category: "働き方改革"
+    expected_type: "text"
+    evaluation_criteria:
+      - "労働時間の計算方法が説明されているか"
+      - "対象労働者や計算式が含まれているか"
+    expected_keywords: ["労働時間", "計算", "対象労働者"]
+    accuracy_weight: 1.0
+
+  - id: "T08"
+    question: "雇用管理区分とは何ですか？"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "雇用管理区分の定義が説明されているか"
+      - "職種や雇用形態による区分について言及されているか"
+    expected_keywords: ["雇用管理区分", "職種", "雇用形態"]
+    accuracy_weight: 1.0
+
+  - id: "T09"
+    question: "男女の賃金差異の情報公表について教えてください"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "賃金差異の公表義務について説明されているか"
+      - "2022年7月からの制度変更に言及されているか"
+    expected_keywords: ["賃金差異", "情報公表", "必須項目"]
+    accuracy_weight: 1.0
+
+  - id: "T10"
+    question: "派遣労働者の安全衛生管理について教えてください"
+    category: "派遣労働者の 労働条件・安全衛生"
+    expected_type: "text"
+    evaluation_criteria:
+      - "派遣労働者の安全衛生に関する説明があるか"
+      - "派遣元・派遣先の責任分担について言及されているか"
+    expected_keywords: ["派遣労働者", "安全衛生", "労働条件"]
+    accuracy_weight: 1.0
+
+# ========================================
+# B. 表検索評価用（3問）
+# ========================================
+table_search:
+  - id: "TB01"
+    question: "男女別の採用数や管理職数の表を見せてください"
+    category: "女性活躍推進"
+    expected_type: "table"
+    evaluation_criteria:
+      - "表の画像が表示されているか"
+      - "男女別のデータが含まれているか"
+    expected_image: true
+    expected_keywords: ["表", "男女", "採用", "管理職"]
+    accuracy_weight: 1.0
+
+  - id: "TB02"
+    question: "女性活躍推進に関する取組内容の一覧表はありますか？"
+    category: "女性活躍推進"
+    expected_type: "table"
+    evaluation_criteria:
+      - "取組内容の表が検索されているか"
+      - "具体的な施策が列挙されているか"
+    expected_image: true
+    expected_keywords: ["表", "取組", "女性活躍"]
+    accuracy_weight: 1.0
+
+  - id: "TB03"
+    question: "労働時間に関する基準の表を見せてください"
+    category: "働き方改革"
+    expected_type: "table"
+    evaluation_criteria:
+      - "労働時間に関する表が表示されているか"
+      - "計算式や基準が含まれているか"
+    expected_image: true
+    expected_keywords: ["表", "労働時間", "基準"]
+    accuracy_weight: 1.0
+
+# ========================================
+# C. グラフ検索・数値抽出評価用（3問）
+# ========================================
+graph_search:
+  - id: "G01"
+    question: "女性の年齢階級別就業率のグラフはありますか？"
+    category: "女性活躍推進"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "年齢階級別のグラフが表示されているか"
+      - "就業率の推移や傾向が説明されているか"
+    expected_image: true
+    expected_keywords: ["グラフ", "年齢", "就業率", "女性"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+  - id: "G02"
+    question: "男女の労働力率の比較データを見せてください"
+    category: "女性活躍推進"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "男女比較のグラフまたはデータが表示されているか"
+      - "具体的な数値が抽出されているか"
+    expected_image: true
+    expected_keywords: ["男女", "労働力率", "比較"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+  - id: "G03"
+    question: "女性の管理職比率の推移を教えてください"
+    category: "女性活躍推進"
+    expected_type: "graph"
+    evaluation_criteria:
+      - "管理職比率に関するデータが表示されているか"
+      - "時系列データまたは具体的な数値が含まれているか"
+    expected_image: true
+    expected_keywords: ["管理職", "比率", "女性", "推移"]
+    requires_numeric_data: true
+    accuracy_weight: 1.0
+
+# ========================================
+# D. ハイブリッド検索評価用（3問）
+# ========================================
+hybrid_search:
+  - id: "H01"
+    question: "女性活躍推進の現状と課題について、データを含めて教えてください"
+    category: "女性活躍推進"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "テキストによる説明とグラフ/表の両方が含まれているか"
+      - "現状分析と課題が統合的に説明されているか"
+    expected_image: true
+    expected_keywords: ["女性活躍", "現状", "課題", "データ"]
+    accuracy_weight: 1.0
+
+  - id: "H02"
+    question: "働き方改革に関する具体的な取組内容と目標を教えてください"
+    category: "働き方改革"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "取組内容の説明と具体的なデータが含まれているか"
+      - "目標数値や計画が示されているか"
+    expected_image: true
+    expected_keywords: ["働き方改革", "取組", "目標"]
+    accuracy_weight: 1.0
+
+  - id: "H03"
+    question: "全体的な労働環境改善の取組について総合的に教えてください"
+    category: "全カテゴリー"
+    expected_type: "hybrid"
+    evaluation_criteria:
+      - "複数カテゴリーから情報が統合されているか"
+      - "包括的な説明が提供されているか"
+    expected_image: true
+    expected_keywords: ["労働環境", "改善", "取組"]
+    accuracy_weight: 1.0
+
+# ========================================
+# E. カテゴリーフィルタリング評価用（4問）
+# ========================================
+category_filtering:
+  - id: "C01"
+    question: "このカテゴリーに含まれる主な内容を教えてください"
+    category: "女性活躍推進"
+    expected_type: "text"
+    evaluation_criteria:
+      - "女性活躍推進カテゴリーのみから検索されているか"
+      - "他カテゴリーの情報が混入していないか"
+    expected_keywords: ["女性活躍", "推進法", "行動計画"]
+    verify_category_filter: true
+    accuracy_weight: 1.0
+
+  - id: "C02"
+    question: "このカテゴリーに関連する主要な法律や制度を教えてください"
+    category: "働き方改革"
+    expected_type: "text"
+    evaluation_criteria:
+      - "働き方改革カテゴリーのみから検索されているか"
+      - "関連する法律や制度が説明されているか"
+    expected_keywords: ["働き方改革", "法律", "制度"]
+    verify_category_filter: true
+    accuracy_weight: 1.0
+
+  - id: "C03"
+    question: "派遣労働者に関する重要なポイントを教えてください"
+    category: "派遣労働者の 労働条件・安全衛生"
+    expected_type: "text"
+    evaluation_criteria:
+      - "派遣労働者カテゴリーのみから検索されているか"
+      - "労働条件や安全衛生について説明されているか"
+    expected_keywords: ["派遣労働者", "労働条件", "安全衛生"]
+    verify_category_filter: true
+    accuracy_weight: 1.0
+
+  - id: "C04"
+    question: "登録されている全てのカテゴリーの概要を教えてください"
+    category: "全カテゴリー"
+    expected_type: "text"
+    evaluation_criteria:
+      - "複数カテゴリーから情報が統合されているか"
+      - "包括的な概要が提供されているか"
+    expected_keywords: ["女性活躍", "働き方改革", "派遣"]
+    verify_category_filter: false
+    accuracy_weight: 1.0
+
+# ========================================
+# 評価設定
+# ========================================
+evaluation_settings:
+  accuracy_scores:
+    5: "完全に正確で完璧な回答"
+    4: "ほぼ正確だが小さな不足あり"
+    3: "部分的に正確だが重要な情報が欠落"
+    2: "不正確な情報が含まれる"
+    1: "完全に不正確または無関連"
+
+  reference_validity:
+    1: "正しい参照元を提示"
+    0: "不適切な参照元"
+
+  image_search_accuracy:
+    1.0: "正しい表/グラフを表示"
+    0.5: "関連するが最適でない画像"
+    0.0: "不適切な画像または画像なし"
+
+  numeric_extraction_accuracy:
+    1.0: "数値が正確（±5%以内）"
+    0.5: "数値に誤差あり（±10%以内）"
+    0.0: "数値が大きく異なるor抽出失敗"
+
+  performance_requirements:
+    max_response_time_seconds: 15
+    max_index_time_per_page_seconds: 20
+
+  success_criteria:
+    text_accuracy_threshold: 0.85  # 85%以上
+    table_accuracy_threshold: 0.80  # 80%以上
+    graph_numeric_accuracy_threshold: 0.70  # 70%以上
+    category_filter_accuracy: 1.00  # 100%

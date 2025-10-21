@@ -117,7 +117,7 @@ vision:
 # 検索設定
 search:
   top_k_text: 5
-  top_k_images: 10  # 画像検索数を増やして目的のグラフを含める確率を上げる
+  top_k_images: 5  # コンテキスト最適化（アップロード画像5枚+検索画像5枚=最大10枚）
   similarity_threshold: 0.7
   enable_hybrid_search: true  # テキストと画像の統合検索
   enable_category_filter: true  # カテゴリーフィルタリング有効化
