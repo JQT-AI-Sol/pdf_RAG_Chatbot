@@ -243,8 +243,8 @@ class VectorStore:
                     'image_path': storage_path  # Storage pathを保存
                 })
 
-            self.client.table(self.image_table).insert(records).execute()
-            logger.info(f"Added {len(image_data_list)} image contents to Supabase")
+            self.client.table(self.image_table).upsert(records).execute()
+            logger.info(f"Upserted {len(image_data_list)} image contents to Supabase")
 
         except Exception as e:
             logger.error(f"Error adding image contents to Supabase: {e}")

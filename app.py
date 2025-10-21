@@ -339,7 +339,7 @@ def process_pdfs(uploaded_files, category):
                     text_chunks_from_vision = []
                     for img in analyzed_images:
                         text_chunks_from_vision.append({
-                            'content': img['description'],
+                            'text': img['description'],  # 'content'ではなく'text'を使用
                             'page_number': img['page_number'],
                             'source_file': img['source_file'],
                             'category': img['category'],
