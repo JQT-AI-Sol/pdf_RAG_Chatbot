@@ -325,11 +325,17 @@ class VectorStore:
                         {
                             'id': row.get('id'),
                             'content': row.get('document', row.get('content', '')),  # documentまたはcontentフィールド
-                            'source_file': row.get('metadata', {}).get('source_file', row.get('source_file', '')),
-                            'page_number': row.get('metadata', {}).get('page_number', row.get('page_number', 0)),
-                            'category': row.get('metadata', {}).get('category', row.get('category', '')),
-                            'content_type': row.get('metadata', {}).get('content_type', row.get('content_type', 'text')),
-                            'distance': row.get('distance', 1 - row.get('similarity', 0))
+                            'source_file': row.get('source_file', ''),
+                            'page_number': row.get('page_number', 0),
+                            'category': row.get('category', ''),
+                            'content_type': row.get('content_type', 'text'),
+                            'distance': row.get('distance', 1 - row.get('similarity', 0)),
+                            'metadata': {
+                                'source_file': row.get('source_file', ''),
+                                'page_number': row.get('page_number', 0),
+                                'category': row.get('category', ''),
+                                'content_type': row.get('content_type', 'text')
+                            }
                         }
                         for row in response.data
                     ]
@@ -351,12 +357,18 @@ class VectorStore:
                         {
                             'id': row.get('id'),
                             'description': row.get('document', row.get('content', '')),  # documentまたはcontentフィールド
-                            'source_file': row.get('metadata', {}).get('source_file', row.get('source_file', '')),
-                            'page_number': row.get('metadata', {}).get('page_number', row.get('page_number', 0)),
-                            'category': row.get('metadata', {}).get('category', row.get('category', '')),
-                            'content_type': row.get('metadata', {}).get('content_type', row.get('content_type', 'image')),
-                            'path': row.get('metadata', {}).get('image_path', row.get('image_path', '')),
-                            'distance': row.get('distance', 1 - row.get('similarity', 0))
+                            'source_file': row.get('source_file', ''),
+                            'page_number': row.get('page_number', 0),
+                            'category': row.get('category', ''),
+                            'content_type': row.get('content_type', 'image'),
+                            'path': row.get('image_path', ''),
+                            'distance': row.get('distance', 1 - row.get('similarity', 0)),
+                            'metadata': {
+                                'source_file': row.get('source_file', ''),
+                                'page_number': row.get('page_number', 0),
+                                'category': row.get('category', ''),
+                                'content_type': row.get('content_type', 'image')
+                            }
                         }
                         for row in response.data
                     ]
