@@ -69,7 +69,8 @@ vision:
   image_format: "PNG"
   enable_caching: true  # 同じ画像の再処理を避ける
 
-  # Vision AI使用範囲（GPT-5対応）
+  # Vision AI使用範囲
+  # 注意: analysis_prompt_tableとanalysis_prompt_graphはこのvisionセクション内で定義されています
   use_for_charts_only: true  # グラフのみVision使用（推奨）
   use_for_complex_tables: true  # 複雑な表もVision使用
   use_for_simple_tables: false  # シンプルな表はMarkdown化のみ
