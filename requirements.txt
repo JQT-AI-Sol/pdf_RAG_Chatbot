@@ -1,7 +1,7 @@
 # Streamlit UI
 streamlit>=1.32.0
 
-# LangChain & OpenAI
+# LangChain & OpenAI (updated 2025-10-21)
 langchain>=0.1.0
 langchain-openai>=0.0.5
 openai>=1.12.0
