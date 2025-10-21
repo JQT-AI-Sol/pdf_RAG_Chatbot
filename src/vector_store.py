@@ -243,7 +243,11 @@ class VectorStore:
                     'image_path': storage_path  # Storage pathを保存
                 })
 
-            self.client.table(self.image_table).upsert(records).execute()
+            # upsertでon_conflictを明示的に指定（主キーidで競合解決）
+            self.client.table(self.image_table).upsert(
+                records,
+                on_conflict='id'
+            ).execute()
             logger.info(f"Upserted {len(image_data_list)} image contents to Supabase")
 
         except Exception as e:
