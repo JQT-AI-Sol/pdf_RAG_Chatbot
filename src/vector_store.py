@@ -328,18 +328,18 @@ class VectorStore:
                 if response.data:
                     results['text'] = [
                         {
-                            'id': row.get('id'),
-                            'content': row.get('document', row.get('content', '')),  # documentまたはcontentフィールド
+                            'id': row.get('id', ''),
+                            'content': row.get('content', ''),
                             'source_file': row.get('source_file', ''),
                             'page_number': row.get('page_number', 0),
                             'category': row.get('category', ''),
-                            'content_type': row.get('content_type', 'text'),
+                            'content_type': 'text',  # テキストは常に'text'
                             'distance': row.get('distance', 1 - row.get('similarity', 0)),
                             'metadata': {
                                 'source_file': row.get('source_file', ''),
                                 'page_number': row.get('page_number', 0),
                                 'category': row.get('category', ''),
-                                'content_type': row.get('content_type', 'text')
+                                'content_type': 'text'
                             }
                         }
                         for row in response.data
@@ -365,12 +365,12 @@ class VectorStore:
                 if response.data:
                     results['images'] = [
                         {
-                            'id': row.get('id'),
-                            'description': row.get('document', row.get('content', '')),  # documentまたはcontentフィールド
+                            'id': row.get('id', ''),
+                            'description': row.get('content', ''),
                             'source_file': row.get('source_file', ''),
                             'page_number': row.get('page_number', 0),
                             'category': row.get('category', ''),
-                            'content_type': row.get('content_type', 'image'),
+                            'content_type': row.get('content_type', 'image'),  # DBから取得、デフォルトは'image'
                             'path': row.get('image_path', ''),
                             'distance': row.get('distance', 1 - row.get('similarity', 0)),
                             'metadata': {
