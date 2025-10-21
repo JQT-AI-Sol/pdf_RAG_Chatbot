@@ -30,7 +30,7 @@ class VectorStore:
         else:
             self._init_chromadb()
 
-        logger.info(f"Vector store initialized with provider: {self.provider}")
+        logger.info(f"Vector store initialized with provider: {self.provider} (v1.1)")
 
     def _init_supabase(self):
         """Supabaseクライアントの初期化"""
