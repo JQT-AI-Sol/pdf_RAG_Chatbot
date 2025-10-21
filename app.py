@@ -188,6 +188,11 @@ def sidebar():
     st.sidebar.markdown("---")
     if st.sidebar.button("🗑️ チャット履歴をリセット", type="secondary"):
         st.session_state.chat_history = []
+        st.session_state.uploaded_chat_images = []
+        # 入力フォームをクリアするためのフラグ
+        if 'chat_input_key' not in st.session_state:
+            st.session_state.chat_input_key = 0
+        st.session_state.chat_input_key += 1
         st.rerun()
 
 
@@ -709,17 +714,19 @@ def main_area():
             st.session_state.show_image_dialog = True
 
     with col2:
-        # テキスト入力
+        # テキスト入力（リセット時にクリアするため動的キーを使用）
+        if 'chat_input_key' not in st.session_state:
+            st.session_state.chat_input_key = 0
         question = st.text_input(
             "質問を入力",
-            key="chat_input",
+            key=f"chat_input_{st.session_state.chat_input_key}",
             placeholder="💬 質問を入力してください（例: この製品の主な特徴は何ですか？）",
             label_visibility="collapsed"
         )
 
     with col3:
-        # 送信ボタン
-        send_button = st.button("▶", key="send_button", help="送信", use_container_width=True, type="primary")
+        # 送信ボタン（動的キーを使用）
+        send_button = st.button("▶", key=f"send_button_{st.session_state.chat_input_key}", help="送信", use_container_width=True, type="primary")
 
     # 質問が送信された場合（送信ボタンのみ）
     if send_button and question:
