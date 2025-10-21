@@ -65,7 +65,8 @@ class PDFProcessor:
 
                 # テキストが抽出できない、または非常に少ない場合
                 # → 画像ベースPDFまたは特殊エンコーディングの可能性
-                if not text or len(text.strip()) < 50:
+                # 閾値を50→20文字に緩和（表やグラフ中心のPDFでもテキスト抽出を試みる）
+                if not text or len(text.strip()) < 20:
                     logger.warning(f"Page {page_num}: テキスト抽出失敗またはテキスト量が少ない。ページ全体を画像として保存します。")
 
                     # ページ全体を画像として保存

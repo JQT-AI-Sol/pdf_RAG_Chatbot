@@ -334,6 +334,22 @@ def process_pdfs(uploaded_files, category):
                     # ベクトルストアにバッチで追加
                     st.session_state.vector_store.add_image_contents_batch(analyzed_images, image_embeddings)
                     logging.info(f"Added {len(analyzed_images)} images to vector store")
+
+                    # Vision APIで抽出したテキストをtext_chunksとしても保存（検索精度向上）
+                    text_chunks_from_vision = []
+                    for img in analyzed_images:
+                        text_chunks_from_vision.append({
+                            'content': img['description'],
+                            'page_number': img['page_number'],
+                            'source_file': img['source_file'],
+                            'category': img['category'],
+                            'content_type': img.get('content_type', 'image')
+                        })
+
+                    if text_chunks_from_vision:
+                        # テキストチャンクとしてもベクトルストアに追加
+                        st.session_state.vector_store.add_text_chunks_batch(text_chunks_from_vision, image_embeddings)
+                        logging.info(f"Added {len(text_chunks_from_vision)} vision-extracted text chunks to vector store")
                 else:
                     # 全ての画像解析が失敗した場合
                     error_msg = f"❌ 全ての画像解析が失敗しました ({num_images}枚)"

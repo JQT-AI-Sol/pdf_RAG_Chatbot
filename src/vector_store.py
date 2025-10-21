@@ -52,8 +52,27 @@ class VectorStore:
             self.image_table = supabase_config.get('table_name_images', 'pdf_image_contents')
             self.pdf_table = supabase_config.get('table_name_pdfs', 'registered_pdfs')
             self.match_threshold = supabase_config.get('match_threshold', 0.7)
+            self.storage_bucket = supabase_config.get('storage_bucket', 'pdf-images')
 
             logger.info(f"Supabase client initialized (URL: {supabase_url})")
+
+            # Storageバケットの確認・作成
+            try:
+                # バケットが存在するか確認
+                buckets = self.client.storage.list_buckets()
+                bucket_names = [b.name for b in buckets]
+
+                if self.storage_bucket not in bucket_names:
+                    # バケットが存在しない場合は作成
+                    self.client.storage.create_bucket(
+                        self.storage_bucket,
+                        options={"public": False}  # プライベートバケット
+                    )
+                    logger.info(f"Created Supabase Storage bucket: {self.storage_bucket}")
+                else:
+                    logger.info(f"Using existing Supabase Storage bucket: {self.storage_bucket}")
+            except Exception as e:
+                logger.warning(f"Could not verify/create storage bucket: {e}. Continuing anyway...")
 
         except Exception as e:
             logger.error(f"Failed to initialize Supabase: {e}")
@@ -174,11 +193,45 @@ class VectorStore:
             self._add_image_contents_chromadb(image_data_list, embeddings)
 
     def _add_image_contents_supabase(self, image_data_list: List[Dict[str, Any]], embeddings: List[List[float]]):
-        """Supabaseに画像コンテンツを追加"""
+        """Supabaseに画像コンテンツを追加（画像はStorageにアップロード）"""
         try:
+            from pathlib import Path
+
             records = []
             for img_data, embedding in zip(image_data_list, embeddings):
                 image_id = f"image_{hashlib.md5(img_data['image_path'].encode()).hexdigest()}"
+
+                # 画像をSupabase Storageにアップロード
+                local_image_path = img_data['image_path']
+                storage_path = None
+
+                if Path(local_image_path).exists():
+                    try:
+                        # Storageパスを生成（category/filename形式）
+                        category = img_data.get('category', 'uncategorized')
+                        filename = Path(local_image_path).name
+                        storage_path = f"{category}/{filename}"
+
+                        # 画像ファイルをアップロード
+                        with open(local_image_path, 'rb') as f:
+                            image_bytes = f.read()
+
+                        self.client.storage.from_(self.storage_bucket).upload(
+                            storage_path,
+                            image_bytes,
+                            file_options={"content-type": "image/png", "upsert": "true"}
+                        )
+                        logger.debug(f"Uploaded image to Storage: {storage_path}")
+
+                    except Exception as upload_error:
+                        logger.warning(f"Failed to upload image {local_image_path} to Storage: {upload_error}")
+                        # アップロード失敗時はローカルパスをそのまま使用
+                        storage_path = local_image_path
+                else:
+                    # ファイルが存在しない場合はローカルパスをそのまま使用
+                    logger.warning(f"Image file not found: {local_image_path}")
+                    storage_path = local_image_path
+
                 records.append({
                     'id': image_id,
                     'content': img_data.get('description', ''),
@@ -187,7 +240,7 @@ class VectorStore:
                     'page_number': img_data.get('page_number', 0),
                     'category': img_data.get('category', ''),
                     'content_type': img_data.get('content_type', 'image'),
-                    'image_path': img_data['image_path']
+                    'image_path': storage_path  # Storage pathを保存
                 })
 
             self.client.table(self.image_table).insert(records).execute()

@@ -30,6 +30,7 @@ vector_store:
     table_name_images: "pdf_image_contents"
     table_name_pdfs: "registered_pdfs"
     match_threshold: 0.7  # 類似度閾値
+    storage_bucket: "pdf-images"  # Supabase Storage バケット名
 
 # PDFアップロード設定
 pdf_upload:
