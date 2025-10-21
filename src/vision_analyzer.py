@@ -46,13 +46,13 @@ class VisionAnalyzer:
         if not self.api_key:
             logger.warning("GEMINI_API_KEY environment variable is not set - vision analysis will be disabled")
             logger.warning("To enable vision analysis, please set GEMINI_API_KEY in your .env file")
-            self.model_name = self.gemini_config.get("model_vision", "gemini-2.5-flash")
+            self.model_name = self.gemini_config.get("model_vision", "gemini-2.5-pro")
             self.model = None
         else:
             # Native Gemini SDK初期化
             try:
                 genai.configure(api_key=self.api_key)
-                self.model_name = self.gemini_config.get("model_vision", "gemini-2.5-flash")
+                self.model_name = self.gemini_config.get("model_vision", "gemini-2.5-pro")
                 self.model = genai.GenerativeModel(model_name=self.model_name)
                 logger.info(f"VisionAnalyzer initialized with model: {self.model_name}")
             except Exception as e:
