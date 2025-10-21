@@ -348,7 +348,7 @@ def process_pdfs(uploaded_files, category):
 
                     if text_chunks_from_vision:
                         # テキストチャンクとしてもベクトルストアに追加
-                        st.session_state.vector_store.add_text_chunks_batch(text_chunks_from_vision, image_embeddings)
+                        st.session_state.vector_store.add_text_chunks(text_chunks_from_vision, image_embeddings)
                         logging.info(f"Added {len(text_chunks_from_vision)} vision-extracted text chunks to vector store")
                 else:
                     # 全ての画像解析が失敗した場合
