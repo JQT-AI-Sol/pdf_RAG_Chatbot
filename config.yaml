@@ -13,11 +13,23 @@ gemini:
   temperature: 0.7  # 温度パラメータ
   # GEMINI_API_KEY環境変数から読み込み
 
-# ChromaDB設定
-chromadb:
-  persist_directory: "./data/chroma_db"
-  collection_name_text: "pdf_text_chunks"
-  collection_name_images: "pdf_image_contents"
+# Vector Store設定
+vector_store:
+  provider: "supabase"  # "chromadb" or "supabase"
+
+  # ChromaDB設定（ローカル開発用）
+  chromadb:
+    persist_directory: "./data/chroma_db"
+    collection_name_text: "pdf_text_chunks"
+    collection_name_images: "pdf_image_contents"
+
+  # Supabase設定（本番環境用）
+  supabase:
+    # 環境変数から読み込み: SUPABASE_URL, SUPABASE_KEY
+    table_name_text: "pdf_text_chunks"
+    table_name_images: "pdf_image_contents"
+    table_name_pdfs: "registered_pdfs"
+    match_threshold: 0.7  # 類似度閾値
 
 # PDFアップロード設定
 pdf_upload:

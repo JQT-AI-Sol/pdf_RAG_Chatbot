@@ -340,6 +340,9 @@ def process_pdfs(uploaded_files, category):
                     st.sidebar.error(error_msg)
                     logging.error(error_msg)
 
+            # PDFをregistered_pdfsテーブルに登録（Supabaseの場合）
+            st.session_state.vector_store.register_pdf(uploaded_file.name, category)
+
             # 完了メッセージの作成
             completion_msg = f"✅ {uploaded_file.name}: テキスト {len(pdf_result['text_chunks'])}件"
             if pdf_result['images']:

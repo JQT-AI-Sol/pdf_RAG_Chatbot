@@ -1,29 +1,69 @@
 """
-Vector store module using ChromaDB
+Vector store module supporting both ChromaDB and Supabase
 """
 
 import logging
 import os
 from typing import List, Dict, Any, Optional
-import chromadb
-from chromadb.config import Settings
-
+import uuid
+import hashlib
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStore:
-    """ChromaDBを使用したベクトルストアクラス"""
+    """ベクトルストアクラス（ChromaDB / Supabase対応）"""
 
     def __init__(self, config: dict):
         """
         初期化
 
         Args:
-            config: ChromaDB設定
+            config: 設定辞書
         """
         self.config = config
-        self.chroma_config = config.get('chromadb', {})
+        self.vs_config = config.get('vector_store', {})
+        self.provider = self.vs_config.get('provider', 'chromadb')
+
+        if self.provider == 'supabase':
+            self._init_supabase()
+        else:
+            self._init_chromadb()
+
+        logger.info(f"Vector store initialized with provider: {self.provider}")
+
+    def _init_supabase(self):
+        """Supabaseクライアントの初期化"""
+        try:
+            from supabase import create_client, Client
+
+            # 環境変数から接続情報を取得
+            supabase_url = os.environ.get('SUPABASE_URL')
+            supabase_key = os.environ.get('SUPABASE_KEY')
+
+            if not supabase_url or not supabase_key:
+                raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+
+            self.client: Client = create_client(supabase_url, supabase_key)
+
+            # テーブル名
+            supabase_config = self.vs_config.get('supabase', {})
+            self.text_table = supabase_config.get('table_name_text', 'pdf_text_chunks')
+            self.image_table = supabase_config.get('table_name_images', 'pdf_image_contents')
+            self.pdf_table = supabase_config.get('table_name_pdfs', 'registered_pdfs')
+            self.match_threshold = supabase_config.get('match_threshold', 0.7)
+
+            logger.info(f"Supabase client initialized (URL: {supabase_url})")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase: {e}")
+            raise
+
+    def _init_chromadb(self):
+        """ChromaDBクライアントの初期化"""
+        import chromadb
+
+        chroma_config = self.vs_config.get('chromadb', {})
 
         # Streamlit Cloud環境を検出
         is_streamlit_cloud = (
@@ -32,23 +72,19 @@ class VectorStore:
             'STREAMLIT_SHARING_MODE' in os.environ
         )
 
-        # ChromaDBクライアントの初期化
         if is_streamlit_cloud:
-            # Streamlit Cloudでは一時ディレクトリにPersistentClientを使用
-            # /tmpは再起動で消えるが、セッション中は永続化される
             persist_dir = '/tmp/chroma_db'
             logger.warning(f"Running on Streamlit Cloud - using PersistentClient with temporary directory: {persist_dir}")
             os.makedirs(persist_dir, exist_ok=True)
             self.client = chromadb.PersistentClient(path=persist_dir)
         else:
-            # ローカル環境ではPersistentClientを使用
             self.client = chromadb.PersistentClient(
-                path=self.chroma_config.get('persist_directory', './data/chroma_db')
+                path=chroma_config.get('persist_directory', './data/chroma_db')
             )
 
         # コレクション名
-        self.text_collection_name = self.chroma_config.get('collection_name_text', 'pdf_text_chunks')
-        self.image_collection_name = self.chroma_config.get('collection_name_images', 'pdf_image_contents')
+        self.text_collection_name = chroma_config.get('collection_name_text', 'pdf_text_chunks')
+        self.image_collection_name = chroma_config.get('collection_name_images', 'pdf_image_contents')
 
         # コレクション取得または作成
         self.text_collection = self.client.get_or_create_collection(
@@ -58,8 +94,6 @@ class VectorStore:
             name=self.image_collection_name
         )
 
-        logger.info("Vector store initialized")
-
     def add_text_chunks(self, chunks: List[Dict[str, Any]], embeddings: List[List[float]]):
         """
         テキストチャンクをベクトルストアに追加
@@ -68,9 +102,36 @@ class VectorStore:
             chunks: テキストチャンクのリスト
             embeddings: 対応するエンベディングのリスト
         """
+        if self.provider == 'supabase':
+            self._add_text_chunks_supabase(chunks, embeddings)
+        else:
+            self._add_text_chunks_chromadb(chunks, embeddings)
+
+    def _add_text_chunks_supabase(self, chunks: List[Dict[str, Any]], embeddings: List[List[float]]):
+        """Supabaseにテキストチャンクを追加"""
         try:
-            import uuid
-            # ユニークなIDを生成（UUID使用）
+            records = []
+            for chunk, embedding in zip(chunks, embeddings):
+                records.append({
+                    'id': f"text_{uuid.uuid4().hex[:16]}",
+                    'content': chunk['text'],
+                    'embedding': embedding,
+                    'source_file': chunk['source_file'],
+                    'page_number': chunk['page_number'],
+                    'category': chunk['category'],
+                    'content_type': 'text'
+                })
+
+            self.client.table(self.text_table).insert(records).execute()
+            logger.info(f"Added {len(chunks)} text chunks to Supabase")
+
+        except Exception as e:
+            logger.error(f"Error adding text chunks to Supabase: {e}")
+            raise
+
+    def _add_text_chunks_chromadb(self, chunks: List[Dict[str, Any]], embeddings: List[List[float]]):
+        """ChromaDBにテキストチャンクを追加"""
+        try:
             ids = [f"text_{uuid.uuid4().hex[:16]}_{i}" for i in range(len(chunks))]
             documents = [chunk['text'] for chunk in chunks]
             metadatas = [
@@ -90,44 +151,10 @@ class VectorStore:
                 metadatas=metadatas
             )
 
-            logger.info(f"Added {len(chunks)} text chunks to vector store")
+            logger.info(f"Added {len(chunks)} text chunks to ChromaDB")
 
         except Exception as e:
-            logger.error(f"Error adding text chunks: {e}")
-            raise
-
-    def add_image_content(self, image_data: Dict[str, Any], embedding: List[float]):
-        """
-        画像コンテンツ（Vision解析結果）をベクトルストアに追加
-
-        Args:
-            image_data: 画像データと解析結果
-            embedding: エンベディング
-        """
-        try:
-            import hashlib
-            # image_pathをハッシュ化してユニークIDを生成
-            image_id = f"image_{hashlib.md5(image_data['image_path'].encode()).hexdigest()}"
-
-            metadata = {
-                'source_file': image_data.get('source_file', ''),
-                'page_number': image_data.get('page_number', 0),
-                'category': image_data.get('category', ''),
-                'content_type': image_data.get('content_type', 'image'),
-                'image_path': image_data['image_path']
-            }
-
-            self.image_collection.add(
-                ids=[image_id],
-                embeddings=[embedding],
-                documents=[image_data.get('description', '')],
-                metadatas=[metadata]
-            )
-
-            logger.info(f"Added image content to vector store: {image_id}")
-
-        except Exception as e:
-            logger.error(f"Error adding image content: {e}")
+            logger.error(f"Error adding text chunks to ChromaDB: {e}")
             raise
 
     def add_image_contents_batch(self, image_data_list: List[Dict[str, Any]], embeddings: List[List[float]]):
@@ -138,12 +165,41 @@ class VectorStore:
             image_data_list: 画像データと解析結果のリスト
             embeddings: 対応するエンベディングのリスト
         """
-        try:
-            if not image_data_list or not embeddings:
-                return
+        if not image_data_list or not embeddings:
+            return
 
-            import hashlib
-            # image_pathをハッシュ化してユニークIDを生成
+        if self.provider == 'supabase':
+            self._add_image_contents_supabase(image_data_list, embeddings)
+        else:
+            self._add_image_contents_chromadb(image_data_list, embeddings)
+
+    def _add_image_contents_supabase(self, image_data_list: List[Dict[str, Any]], embeddings: List[List[float]]):
+        """Supabaseに画像コンテンツを追加"""
+        try:
+            records = []
+            for img_data, embedding in zip(image_data_list, embeddings):
+                image_id = f"image_{hashlib.md5(img_data['image_path'].encode()).hexdigest()}"
+                records.append({
+                    'id': image_id,
+                    'content': img_data.get('description', ''),
+                    'embedding': embedding,
+                    'source_file': img_data.get('source_file', ''),
+                    'page_number': img_data.get('page_number', 0),
+                    'category': img_data.get('category', ''),
+                    'content_type': img_data.get('content_type', 'image'),
+                    'image_path': img_data['image_path']
+                })
+
+            self.client.table(self.image_table).insert(records).execute()
+            logger.info(f"Added {len(image_data_list)} image contents to Supabase")
+
+        except Exception as e:
+            logger.error(f"Error adding image contents to Supabase: {e}")
+            raise
+
+    def _add_image_contents_chromadb(self, image_data_list: List[Dict[str, Any]], embeddings: List[List[float]]):
+        """ChromaDBに画像コンテンツを追加"""
+        try:
             ids = [f"image_{hashlib.md5(img_data['image_path'].encode()).hexdigest()}" for img_data in image_data_list]
             documents = [img_data.get('description', '') for img_data in image_data_list]
             metadatas = [
@@ -164,10 +220,10 @@ class VectorStore:
                 metadatas=metadatas
             )
 
-            logger.info(f"Added {len(image_data_list)} image contents to vector store in batch")
+            logger.info(f"Added {len(image_data_list)} image contents to ChromaDB")
 
         except Exception as e:
-            logger.error(f"Error adding image contents in batch: {e}")
+            logger.error(f"Error adding image contents to ChromaDB: {e}")
             raise
 
     def search(self, query_embedding: List[float], category: Optional[str] = None,
@@ -184,51 +240,115 @@ class VectorStore:
         Returns:
             dict: 検索結果（テキストと画像）
         """
-        results = {
-            'text': [],
-            'images': []
-        }
+        if self.provider == 'supabase':
+            return self._search_supabase(query_embedding, category, top_k, search_type)
+        else:
+            return self._search_chromadb(query_embedding, category, top_k, search_type)
+
+    def _search_supabase(self, query_embedding: List[float], category: Optional[str],
+                        top_k: int, search_type: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Supabaseでベクトル検索"""
+        results = {'text': [], 'images': []}
 
         try:
-            # カテゴリーフィルター
+            # テキスト検索
+            if search_type in ['text', 'both']:
+                response = self.client.rpc(
+                    'match_text_chunks',
+                    {
+                        'query_embedding': query_embedding,
+                        'match_threshold': self.match_threshold,
+                        'match_count': top_k,
+                        'filter_category': category
+                    }
+                ).execute()
+
+                if response.data:
+                    results['text'] = [
+                        {
+                            'id': row['id'],
+                            'document': row['content'],
+                            'metadata': {
+                                'source_file': row['source_file'],
+                                'page_number': row['page_number'],
+                                'category': row['category']
+                            },
+                            'distance': 1 - row['similarity']  # Convert similarity to distance
+                        }
+                        for row in response.data
+                    ]
+
+            # 画像検索
+            if search_type in ['image', 'both']:
+                response = self.client.rpc(
+                    'match_image_contents',
+                    {
+                        'query_embedding': query_embedding,
+                        'match_threshold': self.match_threshold,
+                        'match_count': top_k,
+                        'filter_category': category
+                    }
+                ).execute()
+
+                if response.data:
+                    results['images'] = [
+                        {
+                            'id': row['id'],
+                            'document': row['content'],
+                            'metadata': {
+                                'source_file': row['source_file'],
+                                'page_number': row['page_number'],
+                                'category': row['category'],
+                                'content_type': row['content_type'],
+                                'image_path': row.get('image_path', '')
+                            },
+                            'distance': 1 - row['similarity']
+                        }
+                        for row in response.data
+                    ]
+
+            logger.info(f"Search completed: {len(results['text'])} text, {len(results['images'])} images")
+
+        except Exception as e:
+            logger.error(f"Error during Supabase search: {e}")
+            raise
+
+        return results
+
+    def _search_chromadb(self, query_embedding: List[float], category: Optional[str],
+                        top_k: int, search_type: str) -> Dict[str, List[Dict[str, Any]]]:
+        """ChromaDBでベクトル検索"""
+        results = {'text': [], 'images': []}
+
+        try:
             where = {'category': category} if category else None
 
-            # テキスト検索
             if search_type in ['text', 'both']:
                 text_results = self.text_collection.query(
                     query_embeddings=[query_embedding],
                     n_results=top_k,
                     where=where
                 )
-                results['text'] = self._format_results(text_results)
+                results['text'] = self._format_chromadb_results(text_results)
 
-            # 画像検索
             if search_type in ['image', 'both']:
                 image_results = self.image_collection.query(
                     query_embeddings=[query_embedding],
                     n_results=top_k,
                     where=where
                 )
-                results['images'] = self._format_results(image_results)
+                results['images'] = self._format_chromadb_results(image_results)
 
             logger.info(f"Search completed: {len(results['text'])} text, {len(results['images'])} images")
 
         except Exception as e:
-            logger.error(f"Error during search: {e}")
+            logger.error(f"Error during ChromaDB search: {e}")
             raise
 
         return results
 
-    def _format_results(self, raw_results: dict) -> List[Dict[str, Any]]:
-        """
-        検索結果をフォーマット
-
-        Args:
-            raw_results: ChromaDBの検索結果
-
-        Returns:
-            list: フォーマット済み結果
-        """
+    def _format_chromadb_results(self, raw_results: dict) -> List[Dict[str, Any]]:
+        """ChromaDB検索結果をフォーマット"""
         formatted = []
 
         if not raw_results or not raw_results.get('ids'):
@@ -250,18 +370,54 @@ class VectorStore:
 
         Returns:
             list: PDFファイルごとの情報
-                [{
-                    'source_file': str,
-                    'category': str,
-                    'text_count': int,
-                    'image_count': int,
-                    'total_count': int
-                }, ...]
         """
+        if self.provider == 'supabase':
+            return self._get_registered_pdfs_supabase()
+        else:
+            return self._get_registered_pdfs_chromadb()
+
+    def _get_registered_pdfs_supabase(self) -> List[Dict[str, Any]]:
+        """Supabaseから登録済みPDF一覧を取得"""
+        try:
+            # registered_pdfsテーブルから取得
+            response = self.client.table(self.pdf_table).select('*').execute()
+
+            if not response.data:
+                return []
+
+            result = []
+            for row in response.data:
+                # テキストと画像の件数を集計
+                text_count = self.client.table(self.text_table)\
+                    .select('id', count='exact')\
+                    .eq('source_file', row['filename'])\
+                    .execute()
+
+                image_count = self.client.table(self.image_table)\
+                    .select('id', count='exact')\
+                    .eq('source_file', row['filename'])\
+                    .execute()
+
+                result.append({
+                    'source_file': row['filename'],
+                    'category': row['category'],
+                    'text_count': text_count.count if text_count else 0,
+                    'image_count': image_count.count if image_count else 0,
+                    'total_count': (text_count.count if text_count else 0) + (image_count.count if image_count else 0)
+                })
+
+            logger.info(f"Found {len(result)} registered PDFs")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error getting registered PDFs from Supabase: {e}")
+            return []
+
+    def _get_registered_pdfs_chromadb(self) -> List[Dict[str, Any]]:
+        """ChromaDBから登録済みPDF一覧を取得"""
         try:
             pdf_info = {}
 
-            # テキストコレクションから取得
             text_data = self.text_collection.get()
             if text_data and text_data.get('metadatas'):
                 for metadata in text_data['metadatas']:
@@ -276,7 +432,6 @@ class VectorStore:
                             }
                         pdf_info[source_file]['text_count'] += 1
 
-            # イメージコレクションから取得
             image_data = self.image_collection.get()
             if image_data and image_data.get('metadatas'):
                 for metadata in image_data['metadatas']:
@@ -291,20 +446,18 @@ class VectorStore:
                             }
                         pdf_info[source_file]['image_count'] += 1
 
-            # 合計カウントを追加
             result = []
             for pdf_data in pdf_info.values():
                 pdf_data['total_count'] = pdf_data['text_count'] + pdf_data['image_count']
                 result.append(pdf_data)
 
-            # ファイル名でソート
             result.sort(key=lambda x: x['source_file'])
 
             logger.info(f"Found {len(result)} registered PDFs")
             return result
 
         except Exception as e:
-            logger.error(f"Error getting registered PDFs: {e}")
+            logger.error(f"Error getting registered PDFs from ChromaDB: {e}")
             return []
 
     def delete_by_source_file(self, source_file: str) -> Dict[str, int]:
@@ -317,38 +470,86 @@ class VectorStore:
         Returns:
             dict: 削除件数 {'text_deleted': int, 'image_deleted': int}
         """
-        deleted_counts = {
-            'text_deleted': 0,
-            'image_deleted': 0
-        }
+        if self.provider == 'supabase':
+            return self._delete_by_source_file_supabase(source_file)
+        else:
+            return self._delete_by_source_file_chromadb(source_file)
+
+    def _delete_by_source_file_supabase(self, source_file: str) -> Dict[str, int]:
+        """Supabaseから特定PDFのデータを削除"""
+        deleted_counts = {'text_deleted': 0, 'image_deleted': 0}
 
         try:
-            # テキストコレクションから削除
-            text_data = self.text_collection.get(
-                where={'source_file': source_file}
-            )
+            # テキスト削除
+            text_response = self.client.table(self.text_table)\
+                .delete()\
+                .eq('source_file', source_file)\
+                .execute()
+            deleted_counts['text_deleted'] = len(text_response.data) if text_response.data else 0
+
+            # 画像削除
+            image_response = self.client.table(self.image_table)\
+                .delete()\
+                .eq('source_file', source_file)\
+                .execute()
+            deleted_counts['image_deleted'] = len(image_response.data) if image_response.data else 0
+
+            # PDF登録情報削除
+            self.client.table(self.pdf_table)\
+                .delete()\
+                .eq('filename', source_file)\
+                .execute()
+
+            logger.info(f"Successfully deleted all data for {source_file} from Supabase")
+
+        except Exception as e:
+            logger.error(f"Error deleting data from Supabase for {source_file}: {e}")
+            raise
+
+        return deleted_counts
+
+    def _delete_by_source_file_chromadb(self, source_file: str) -> Dict[str, int]:
+        """ChromaDBから特定PDFのデータを削除"""
+        deleted_counts = {'text_deleted': 0, 'image_deleted': 0}
+
+        try:
+            text_data = self.text_collection.get(where={'source_file': source_file})
             if text_data and text_data.get('ids'):
                 text_ids = text_data['ids']
                 if text_ids:
                     self.text_collection.delete(ids=text_ids)
                     deleted_counts['text_deleted'] = len(text_ids)
-                    logger.info(f"Deleted {len(text_ids)} text chunks for {source_file}")
 
-            # イメージコレクションから削除
-            image_data = self.image_collection.get(
-                where={'source_file': source_file}
-            )
+            image_data = self.image_collection.get(where={'source_file': source_file})
             if image_data and image_data.get('ids'):
                 image_ids = image_data['ids']
                 if image_ids:
                     self.image_collection.delete(ids=image_ids)
                     deleted_counts['image_deleted'] = len(image_ids)
-                    logger.info(f"Deleted {len(image_ids)} image contents for {source_file}")
 
-            logger.info(f"Successfully deleted all data for {source_file}")
+            logger.info(f"Successfully deleted all data for {source_file} from ChromaDB")
 
         except Exception as e:
-            logger.error(f"Error deleting data for {source_file}: {e}")
+            logger.error(f"Error deleting data from ChromaDB for {source_file}: {e}")
             raise
 
         return deleted_counts
+
+    def register_pdf(self, filename: str, category: str):
+        """
+        PDFをregistered_pdfsテーブルに登録
+
+        Args:
+            filename: PDFファイル名
+            category: カテゴリー
+        """
+        if self.provider == 'supabase':
+            try:
+                self.client.table(self.pdf_table).upsert({
+                    'filename': filename,
+                    'category': category
+                }).execute()
+                logger.info(f"Registered PDF in Supabase: {filename}")
+            except Exception as e:
+                logger.error(f"Error registering PDF in Supabase: {e}")
+                raise
