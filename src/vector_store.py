@@ -310,6 +310,7 @@ class VectorStore:
         try:
             # テキスト検索
             if search_type in ['text', 'both']:
+                logger.info(f"Calling match_text_chunks with category={category}, top_k={top_k}")
                 response = self.client.rpc(
                     'match_text_chunks',
                     {
@@ -320,10 +321,14 @@ class VectorStore:
                     }
                 ).execute()
 
+                logger.info(f"Text search response received: {len(response.data) if response.data else 0} results")
+
                 # デバッグ: 実際のレスポンスを確認
                 if response.data and len(response.data) > 0:
                     logger.info(f"Supabase text result - Keys: {list(response.data[0].keys())}")
                     logger.info(f"Supabase text result - Sample data: source_file={response.data[0].get('source_file')}, page={response.data[0].get('page_number')}, category={response.data[0].get('category')}")
+                else:
+                    logger.warning("No text results returned from Supabase RPC")
 
                 if response.data:
                     results['text'] = [
@@ -347,6 +352,7 @@ class VectorStore:
 
             # 画像検索
             if search_type in ['image', 'both']:
+                logger.info(f"Calling match_image_contents with category={category}, top_k={top_k}")
                 response = self.client.rpc(
                     'match_image_contents',
                     {
@@ -357,10 +363,14 @@ class VectorStore:
                     }
                 ).execute()
 
+                logger.info(f"Image search response received: {len(response.data) if response.data else 0} results")
+
                 # デバッグ: 実際のレスポンスを確認
                 if response.data and len(response.data) > 0:
                     logger.info(f"Supabase image result - Keys: {list(response.data[0].keys())}")
                     logger.info(f"Supabase image result - Sample data: source_file={response.data[0].get('source_file')}, page={response.data[0].get('page_number')}, category={response.data[0].get('category')}")
+                else:
+                    logger.warning("No image results returned from Supabase RPC")
 
                 if response.data:
                     results['images'] = [
