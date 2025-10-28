@@ -359,8 +359,20 @@ def process_pdfs(uploaded_files, category):
                     st.sidebar.error(error_msg)
                     logging.error(error_msg)
 
+            # PDFをSupabase Storageにアップロード（Supabaseの場合）
+            storage_path = None
+            if st.session_state.vector_store.provider == 'supabase':
+                try:
+                    storage_path = st.session_state.vector_store.upload_pdf_to_storage(
+                        str(pdf_path), uploaded_file.name, category
+                    )
+                    logging.info(f"PDF uploaded to Supabase Storage: {storage_path}")
+                except Exception as e:
+                    logging.warning(f"Failed to upload PDF to Supabase Storage: {e}")
+                    # ストレージアップロード失敗してもローカルファイルはあるので処理継続
+
             # PDFをregistered_pdfsテーブルに登録（Supabaseの場合）
-            st.session_state.vector_store.register_pdf(uploaded_file.name, category)
+            st.session_state.vector_store.register_pdf(uploaded_file.name, category, storage_path)
 
             # 完了メッセージの作成
             completion_msg = f"✅ {uploaded_file.name}: テキスト {len(pdf_result['text_chunks'])}件"
@@ -435,9 +447,38 @@ def confirm_delete_dialog():
 
 
 def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
-    """PDFを新しいタブで開くリンクまたはダウンロードボタンを表示"""
+    """PDFを新しいタブで開くリンクを表示（Supabase Storage対応）"""
     import os
 
+    # Supabase ProviderでStorage URLが利用可能か確認
+    if st.session_state.vector_store.provider == 'supabase':
+        try:
+            # Supabase StorageからPDFの署名付きURLを取得
+            pdf_url = st.session_state.vector_store.get_pdf_url_from_storage(target_file)
+
+            if pdf_url:
+                # 署名付きURLを新しいタブで開くリンクとして表示
+                st.markdown(
+                    f'<a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="'
+                    f'display: inline-block; '
+                    f'width: 100%; '
+                    f'padding: 0.5rem 1rem; '
+                    f'background-color: #ff4b4b; '
+                    f'color: white; '
+                    f'text-align: center; '
+                    f'text-decoration: none; '
+                    f'border-radius: 0.5rem; '
+                    f'font-weight: 500; '
+                    f'">📖 PDFを開く（新しいタブ）</a>',
+                    unsafe_allow_html=True
+                )
+                return
+            else:
+                logging.warning(f"No Supabase Storage URL found for {target_file}, falling back to local file")
+        except Exception as e:
+            logging.warning(f"Error getting PDF from Supabase Storage: {e}, falling back to local file")
+
+    # フォールバック: ローカルファイルを使用
     # Streamlit Cloud環境を検出
     is_streamlit_cloud = (
         os.environ.get('STREAMLIT_RUNTIME_ENV') == 'cloud' or
@@ -464,9 +505,9 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
         # ローカル環境ではリンクを表示
         pdf_url = f"/app/static/pdfs/{target_file}"
 
-        # アイコンのみのリンクを表示（ホバー時に説明文表示）
+        # 新しいタブで開くリンクを表示
         st.markdown(
-            f'<a href="{pdf_url}" target="_blank" title="PDFを閲覧する" style="'
+            f'<a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="'
             f'display: inline-block; '
             f'width: 100%; '
             f'padding: 0.5rem 1rem; '
@@ -475,10 +516,58 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
             f'text-align: center; '
             f'text-decoration: none; '
             f'border-radius: 0.5rem; '
-            f'font-size: 1.2rem; '
-            f'">📖</a>',
+            f'font-weight: 500; '
+            f'">📖 PDFを開く（新しいタブ）</a>',
             unsafe_allow_html=True
         )
+
+
+def get_pdf_path_for_preview(source_file: str) -> Path:
+    """
+    PDFプレビュー用のパスを取得（Supabase Storageから一時ダウンロード対応）
+
+    Args:
+        source_file: PDFファイル名
+
+    Returns:
+        Path: PDFファイルのパス
+    """
+    import tempfile
+    import os
+
+    pdf_path = Path("data/uploaded_pdfs") / source_file
+
+    # ローカルファイルが存在する場合はそれを使用
+    if pdf_path.exists():
+        return pdf_path
+
+    # Supabase Storageからダウンロードを試行
+    if st.session_state.vector_store.provider == 'supabase':
+        try:
+            # 一時ディレクトリにダウンロード
+            temp_dir = Path(tempfile.gettempdir()) / "pdf_preview_cache"
+            temp_dir.mkdir(exist_ok=True)
+            temp_pdf_path = temp_dir / source_file
+
+            # キャッシュが存在すればそれを使用
+            if temp_pdf_path.exists():
+                return temp_pdf_path
+
+            # Supabase Storageからダウンロード
+            success = st.session_state.vector_store.download_pdf_from_storage(
+                source_file, str(temp_pdf_path)
+            )
+
+            if success:
+                logging.info(f"Downloaded PDF from Supabase Storage for preview: {source_file}")
+                return temp_pdf_path
+            else:
+                logging.warning(f"Failed to download PDF from Supabase Storage: {source_file}")
+        except Exception as e:
+            logging.error(f"Error downloading PDF from Supabase Storage: {e}")
+
+    # どちらも失敗した場合は元のパスを返す（存在しないが）
+    return pdf_path
 
 
 def main_area():
@@ -524,8 +613,9 @@ def main_area():
 
         #### **Step 5: 回答の確認** ✅
         - AIが関連情報を元に回答を生成します
-        - 各回答の下に**参照元**が折りたたまれて表示されます
-        - 参照元を展開すると、回答の根拠となったPDFのページを確認できます
+        - 各回答の下に**参照元PDFファイル**が折りたたまれて表示されます
+        - 参照元を展開すると、PDFファイル名と参照したページ番号が表示されます
+        - **📖 PDFを開く**ボタンをクリックすると、ブラウザの新しいタブでPDFが開きます
 
         ---
 
@@ -560,80 +650,53 @@ def main_area():
                 total_sources = len(text_sources) + len(image_sources)
 
                 if total_sources > 0:
-                    with st.expander(f"📄 参照元 ({total_sources}件)"):
-                        source_idx = 1
+                    # PDFファイルごとに参照情報を集約
+                    pdf_references = {}
 
-                        # テキスト参照元
-                        for result in text_sources:
-                            metadata = result.get("metadata", {})
-                            st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
-                            st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
-                            st.write(f"**タイプ**: テキスト")
+                    # テキスト参照元を集約
+                    for result in text_sources:
+                        metadata = result.get("metadata", {})
+                        source_file = metadata.get('source_file', 'Unknown')
+                        page_number = metadata.get('page_number', 'Unknown')
+                        category = metadata.get('category', 'Unknown')
 
-                            # PDF全体を閲覧ボタン
-                            source_file = metadata.get('source_file')
-                            if source_file:
-                                pdf_path = Path("data/uploaded_pdfs") / source_file
-                                if pdf_path.exists():
-                                    show_pdf_link(pdf_path, source_file, key_suffix=f"hist_{idx}_text_ref_{source_idx}")
+                        if source_file not in pdf_references:
+                            pdf_references[source_file] = {
+                                'category': category,
+                                'pages': set()
+                            }
+                        pdf_references[source_file]['pages'].add(page_number)
 
+                    # 画像参照元を集約
+                    for result in image_sources:
+                        metadata = result.get("metadata", {})
+                        source_file = metadata.get('source_file', 'Unknown')
+                        page_number = metadata.get('page_number', 'Unknown')
+                        category = metadata.get('category', 'Unknown')
+
+                        if source_file not in pdf_references:
+                            pdf_references[source_file] = {
+                                'category': category,
+                                'pages': set()
+                            }
+                        pdf_references[source_file]['pages'].add(page_number)
+
+                    # PDFファイルごとに表示
+                    with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
+                        for pdf_idx, (source_file, info) in enumerate(pdf_references.items(), 1):
+                            pages_list = sorted(list(info['pages']))
+                            pages_str = ', '.join(map(str, pages_list))
+
+                            st.markdown(f"**{pdf_idx}. {source_file}**")
+                            st.write(f"📂 カテゴリー: {info['category']}")
+                            st.write(f"📄 参照ページ: {pages_str}")
+
+                            # PDFダウンロードボタン
+                            pdf_path = Path("data/uploaded_pdfs") / source_file
+                            show_pdf_link(pdf_path, source_file, key_suffix=f"hist_{idx}_pdf_{pdf_idx}")
+
+                            if pdf_idx < len(pdf_references):
                                 st.markdown("---")
-
-                                # 元のPDFページを表示
-                                if pdf_path.exists():
-                                    try:
-                                        import pdfplumber
-
-                                        page_number = metadata.get('page_number', 1)
-                                        with pdfplumber.open(str(pdf_path)) as pdf:
-                                            if page_number <= len(pdf.pages):
-                                                page = pdf.pages[page_number - 1]
-                                                page_img = page.to_image(resolution=150)
-                                                st.image(page_img.original, use_container_width=True)
-                                            else:
-                                                st.warning(f"ページ {page_number} が見つかりません")
-                                    except Exception as e:
-                                        st.error(f"PDFページの表示に失敗しました: {e}")
-
-                            if source_idx < total_sources:
-                                st.markdown("---")
-                            source_idx += 1
-
-                        # 画像参照元
-                        for result in image_sources:
-                            metadata = result.get("metadata", {})
-                            st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
-                            st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
-                            st.write(f"**タイプ**: {metadata.get('content_type', '画像')}")
-
-                            # PDF全体を閲覧ボタン
-                            source_file = metadata.get('source_file')
-                            if source_file:
-                                pdf_path = Path("data/uploaded_pdfs") / source_file
-                                if pdf_path.exists():
-                                    show_pdf_link(pdf_path, source_file, key_suffix=f"hist_{idx}_image_ref_{source_idx}")
-
-                                st.markdown("---")
-
-                                # 元のPDFページを表示
-                                if pdf_path.exists():
-                                    try:
-                                        import pdfplumber
-
-                                        page_number = metadata.get('page_number', 1)
-                                        with pdfplumber.open(str(pdf_path)) as pdf:
-                                            if page_number <= len(pdf.pages):
-                                                page = pdf.pages[page_number - 1]
-                                                page_img = page.to_image(resolution=150)
-                                                st.image(page_img.original, use_container_width=True)
-                                            else:
-                                                st.warning(f"ページ {page_number} が見つかりません")
-                                    except Exception as e:
-                                        st.error(f"PDFページの表示に失敗しました: {e}")
-
-                            if source_idx < total_sources:
-                                st.markdown("---")
-                            source_idx += 1
 
     # 標準チャット入力
     question = st.chat_input("💬 質問を入力してください（例: この製品の主な特徴は何ですか？）")
@@ -725,80 +788,53 @@ def main_area():
                     total_sources = len(text_sources) + len(image_sources)
 
                     if total_sources > 0:
-                        with st.expander(f"📄 参照元 ({total_sources}件)"):
-                            source_idx = 1
+                        # PDFファイルごとに参照情報を集約
+                        pdf_references = {}
 
-                            # テキスト参照元
-                            for result in text_sources:
-                                metadata = result.get("metadata", {})
-                                st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
-                                st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
-                                st.write(f"**タイプ**: テキスト")
+                        # テキスト参照元を集約
+                        for result in text_sources:
+                            metadata = result.get("metadata", {})
+                            source_file = metadata.get('source_file', 'Unknown')
+                            page_number = metadata.get('page_number', 'Unknown')
+                            category = metadata.get('category', 'Unknown')
 
-                                # PDF全体を閲覧ボタン
-                                source_file = metadata.get('source_file')
-                                if source_file:
-                                    pdf_path = Path("data/uploaded_pdfs") / source_file
-                                    if pdf_path.exists():
-                                        show_pdf_link(pdf_path, source_file, key_suffix=f"new_text_ref_{source_idx}")
+                            if source_file not in pdf_references:
+                                pdf_references[source_file] = {
+                                    'category': category,
+                                    'pages': set()
+                                }
+                            pdf_references[source_file]['pages'].add(page_number)
 
+                        # 画像参照元を集約
+                        for result in image_sources:
+                            metadata = result.get("metadata", {})
+                            source_file = metadata.get('source_file', 'Unknown')
+                            page_number = metadata.get('page_number', 'Unknown')
+                            category = metadata.get('category', 'Unknown')
+
+                            if source_file not in pdf_references:
+                                pdf_references[source_file] = {
+                                    'category': category,
+                                    'pages': set()
+                                }
+                            pdf_references[source_file]['pages'].add(page_number)
+
+                        # PDFファイルごとに表示
+                        with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
+                            for pdf_idx, (source_file, info) in enumerate(pdf_references.items(), 1):
+                                pages_list = sorted(list(info['pages']))
+                                pages_str = ', '.join(map(str, pages_list))
+
+                                st.markdown(f"**{pdf_idx}. {source_file}**")
+                                st.write(f"📂 カテゴリー: {info['category']}")
+                                st.write(f"📄 参照ページ: {pages_str}")
+
+                                # PDFダウンロードボタン
+                                pdf_path = Path("data/uploaded_pdfs") / source_file
+                                show_pdf_link(pdf_path, source_file, key_suffix=f"new_pdf_{pdf_idx}")
+
+                                if pdf_idx < len(pdf_references):
                                     st.markdown("---")
-
-                                    # 元のPDFページを表示
-                                    if pdf_path.exists():
-                                        try:
-                                            import pdfplumber
-
-                                            page_number = metadata.get('page_number', 1)
-                                            with pdfplumber.open(str(pdf_path)) as pdf:
-                                                if page_number <= len(pdf.pages):
-                                                    page = pdf.pages[page_number - 1]
-                                                    page_img = page.to_image(resolution=150)
-                                                    st.image(page_img.original, use_container_width=True)
-                                                else:
-                                                    st.warning(f"ページ {page_number} が見つかりません")
-                                        except Exception as e:
-                                            st.error(f"PDFページの表示に失敗しました: {e}")
-
-                                if source_idx < total_sources:
-                                    st.markdown("---")
-                                source_idx += 1
-
-                            # 画像参照元
-                            for result in image_sources:
-                                metadata = result.get("metadata", {})
-                                st.markdown(f"**参照 {source_idx}: {metadata.get('source_file', 'Unknown')} (ページ {metadata.get('page_number', 'Unknown')})**")
-                                st.write(f"**カテゴリー**: {metadata.get('category', 'Unknown')}")
-                                st.write(f"**タイプ**: {metadata.get('content_type', '画像')}")
-
-                                # PDF全体を閲覧ボタン
-                                source_file = metadata.get('source_file')
-                                if source_file:
-                                    pdf_path = Path("data/uploaded_pdfs") / source_file
-                                    if pdf_path.exists():
-                                        show_pdf_link(pdf_path, source_file, key_suffix=f"new_image_ref_{source_idx}")
-
-                                    st.markdown("---")
-
-                                    # 元のPDFページを表示
-                                    if pdf_path.exists():
-                                        try:
-                                            import pdfplumber
-
-                                            page_number = metadata.get('page_number', 1)
-                                            with pdfplumber.open(str(pdf_path)) as pdf:
-                                                if page_number <= len(pdf.pages):
-                                                    page = pdf.pages[page_number - 1]
-                                                    page_img = page.to_image(resolution=150)
-                                                    st.image(page_img.original, use_container_width=True)
-                                                else:
-                                                    st.warning(f"ページ {page_number} が見つかりません")
-                                        except Exception as e:
-                                            st.error(f"PDFページの表示に失敗しました: {e}")
-
-                                if source_idx < total_sources:
-                                    st.markdown("---")
-                                source_idx += 1
 
             # チャット履歴にアシスタントの回答を追加（参照元も含む）
             if result_data:

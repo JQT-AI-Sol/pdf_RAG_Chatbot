@@ -53,6 +53,7 @@ class VectorStore:
             self.pdf_table = supabase_config.get('table_name_pdfs', 'registered_pdfs')
             self.match_threshold = supabase_config.get('match_threshold', 0.7)
             self.storage_bucket = supabase_config.get('storage_bucket', 'pdf-images')
+            self.pdf_storage_bucket = supabase_config.get('pdf_storage_bucket', 'pdf-files')
 
             logger.info(f"Supabase client initialized (URL: {supabase_url})")
 
@@ -62,6 +63,7 @@ class VectorStore:
                 buckets = self.client.storage.list_buckets()
                 bucket_names = [b.name for b in buckets]
 
+                # 画像用バケット
                 if self.storage_bucket not in bucket_names:
                     # バケットが存在しない場合は作成
                     self.client.storage.create_bucket(
@@ -71,6 +73,16 @@ class VectorStore:
                     logger.info(f"Created Supabase Storage bucket: {self.storage_bucket}")
                 else:
                     logger.info(f"Using existing Supabase Storage bucket: {self.storage_bucket}")
+
+                # PDF用バケット
+                if self.pdf_storage_bucket not in bucket_names:
+                    self.client.storage.create_bucket(
+                        self.pdf_storage_bucket,
+                        options={"public": False}  # プライベートバケット
+                    )
+                    logger.info(f"Created Supabase Storage bucket for PDFs: {self.pdf_storage_bucket}")
+                else:
+                    logger.info(f"Using existing Supabase Storage bucket for PDFs: {self.pdf_storage_bucket}")
             except Exception as e:
                 logger.warning(f"Could not verify/create storage bucket: {e}. Continuing anyway...")
 
@@ -636,21 +648,166 @@ class VectorStore:
 
         return deleted_counts
 
-    def register_pdf(self, filename: str, category: str):
+    def register_pdf(self, filename: str, category: str, storage_path: Optional[str] = None):
         """
         PDFをregistered_pdfsテーブルに登録
 
         Args:
             filename: PDFファイル名
             category: カテゴリー
+            storage_path: Supabase Storageパス（オプション）
         """
         if self.provider == 'supabase':
             try:
-                self.client.table(self.pdf_table).upsert({
+                data = {
                     'filename': filename,
                     'category': category
-                }).execute()
-                logger.info(f"Registered PDF in Supabase: {filename}")
+                }
+                if storage_path:
+                    data['storage_path'] = storage_path
+
+                self.client.table(self.pdf_table).upsert(data).execute()
+                logger.info(f"Registered PDF in Supabase: {filename} (storage_path: {storage_path})")
             except Exception as e:
                 logger.error(f"Error registering PDF in Supabase: {e}")
                 raise
+
+    def upload_pdf_to_storage(self, pdf_path: str, filename: str, category: str) -> str:
+        """
+        PDFファイルをSupabase Storageにアップロード
+
+        Args:
+            pdf_path: ローカルのPDFファイルパス
+            filename: PDFファイル名
+            category: カテゴリー
+
+        Returns:
+            str: Storageパス
+        """
+        if self.provider != 'supabase':
+            logger.warning("PDF upload to storage is only supported for Supabase provider")
+            return ""
+
+        try:
+            from pathlib import Path
+            import hashlib
+            from datetime import datetime
+
+            # Storageパスを生成（日本語を避けるため、ハッシュベースのパスを使用）
+            # カテゴリーと日時のハッシュでディレクトリ作成
+            category_hash = hashlib.md5(category.encode('utf-8')).hexdigest()[:8]
+            timestamp = datetime.now().strftime("%Y%m%d")
+
+            # ファイル名の拡張子を保持
+            file_extension = Path(filename).suffix
+            filename_hash = hashlib.md5(filename.encode('utf-8')).hexdigest()[:16]
+
+            # 英数字のみのパスを生成: cat_{hash}/file_{hash}_{timestamp}.pdf
+            storage_path = f"cat_{category_hash}/file_{filename_hash}_{timestamp}{file_extension}"
+
+            # PDFファイルを読み込み
+            with open(pdf_path, 'rb') as f:
+                pdf_bytes = f.read()
+
+            # Supabase Storageにアップロード
+            self.client.storage.from_(self.pdf_storage_bucket).upload(
+                storage_path,
+                pdf_bytes,
+                file_options={"content-type": "application/pdf", "upsert": "true"}
+            )
+            logger.info(f"Uploaded PDF to Supabase Storage: {storage_path}")
+
+            return storage_path
+
+        except Exception as e:
+            logger.error(f"Error uploading PDF to Supabase Storage: {e}")
+            raise
+
+    def get_pdf_url_from_storage(self, filename: str) -> Optional[str]:
+        """
+        Supabase StorageからPDFの署名付きURLを取得
+
+        Args:
+            filename: PDFファイル名
+
+        Returns:
+            str: 署名付きURL（有効期限: 1時間）、取得失敗時はNone
+        """
+        if self.provider != 'supabase':
+            return None
+
+        try:
+            # registered_pdfsテーブルからstorage_pathを取得
+            response = self.client.table(self.pdf_table)\
+                .select('storage_path')\
+                .eq('filename', filename)\
+                .execute()
+
+            if not response.data or len(response.data) == 0:
+                logger.warning(f"PDF not found in database: {filename}")
+                return None
+
+            storage_path = response.data[0].get('storage_path')
+            if not storage_path:
+                logger.warning(f"No storage_path found for PDF: {filename}")
+                return None
+
+            # 署名付きURLを生成（有効期限: 3600秒 = 1時間）
+            url_response = self.client.storage.from_(self.pdf_storage_bucket)\
+                .create_signed_url(storage_path, 3600)
+
+            if url_response and 'signedURL' in url_response:
+                logger.info(f"Generated signed URL for PDF: {filename}")
+                return url_response['signedURL']
+            else:
+                logger.error(f"Failed to generate signed URL for PDF: {filename}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting PDF URL from Supabase Storage: {e}")
+            return None
+
+    def download_pdf_from_storage(self, filename: str, destination_path: str) -> bool:
+        """
+        Supabase StorageからPDFをダウンロード
+
+        Args:
+            filename: PDFファイル名
+            destination_path: ダウンロード先パス
+
+        Returns:
+            bool: 成功時True、失敗時False
+        """
+        if self.provider != 'supabase':
+            return False
+
+        try:
+            # registered_pdfsテーブルからstorage_pathを取得
+            response = self.client.table(self.pdf_table)\
+                .select('storage_path')\
+                .eq('filename', filename)\
+                .execute()
+
+            if not response.data or len(response.data) == 0:
+                logger.warning(f"PDF not found in database: {filename}")
+                return False
+
+            storage_path = response.data[0].get('storage_path')
+            if not storage_path:
+                logger.warning(f"No storage_path found for PDF: {filename}")
+                return False
+
+            # PDFをダウンロード
+            pdf_bytes = self.client.storage.from_(self.pdf_storage_bucket)\
+                .download(storage_path)
+
+            # ファイルに保存
+            with open(destination_path, 'wb') as f:
+                f.write(pdf_bytes)
+
+            logger.info(f"Downloaded PDF from Supabase Storage: {filename} -> {destination_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error downloading PDF from Supabase Storage: {e}")
+            return False
