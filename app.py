@@ -135,7 +135,8 @@ def sidebar():
                 with col1:
                     # 閲覧ボタン
                     pdf_path = Path("data/uploaded_pdfs") / pdf['source_file']
-                    if pdf_path.exists():
+                    # Supabase Storageを使用している場合はローカルファイルチェックをスキップ
+                    if st.session_state.vector_store.provider == 'supabase' or pdf_path.exists():
                         show_pdf_link(pdf_path, pdf['source_file'], key_suffix="sidebar")
                     else:
                         st.error(f"PDFファイルが見つかりません: {pdf['source_file']}")
