@@ -160,7 +160,7 @@ rag:
   enable_semantic_chunking: true  # セマンティックチャンキングによるコンテキスト品質向上
   enable_embedding_cache: true  # エンベディングキャッシングによるレイテンシ削減
   enable_vision_cache: true  # Vision解析キャッシングによるコスト削減
-  enable_bm25_hybrid: false  # BM25ハイブリッド検索（未実装）
+  enable_bm25_hybrid: true  # BM25ハイブリッド検索によるリコール向上
 
 # チャンキング設定（Semantic Chunking用）
 chunking:
@@ -186,6 +186,14 @@ reranking:
   # Alternative: "cross-encoder/ms-marco-electra-base" (より高精度だが重い)
   top_k_initial: 10  # 初期検索で取得する文書数（vector searchから）
   top_k_final: 5  # Reranking後に返す最終文書数
+
+# BM25ハイブリッド検索設定
+hybrid_search:
+  enabled: true  # ハイブリッド検索を有効化
+  alpha: 0.7  # ベクトル検索の重み（0-1）、BM25の重みは1-alpha
+  # alpha=0.7 → 70%セマンティック + 30%キーワード（推奨）
+  # alpha=0.5 → 50/50のバランス
+  # alpha=0.9 → セマンティック重視
 
 # キャッシュ設定
 cache:
