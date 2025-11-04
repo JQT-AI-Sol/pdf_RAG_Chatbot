@@ -27,3 +27,6 @@ PyYAML>=6.0.1
 
 # Observability
 langfuse>=2.0.0,<3.0.0
+
+# Reranking (Phase 1: Performance Improvement)
+sentence-transformers>=2.7.0

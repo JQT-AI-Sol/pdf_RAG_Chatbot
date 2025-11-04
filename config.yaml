@@ -1,6 +1,7 @@
 # OpenAI設定
 openai:
   model_chat: "gpt-4o"  # GPT-4oを使用（ストリーミング対応）
+  model_vision: "gpt-5"  # GPT-5を画像解析用モデルとして使用
   model_embedding: "text-embedding-3-large"  # より高性能なembedding
   temperature: 0.7  # GPT-5系はデフォルト値(1)のみサポート（パラメータ指定不要）
   max_tokens: 16000  # max_completion_tokensとして使用（推論トークン+回答用）
@@ -152,6 +153,20 @@ vision:
       "data_points": [...],
       "insights": "..."
     }
+
+# RAG性能向上設定 (Phase 1: Quick Wins)
+rag:
+  enable_reranking: true  # Rerankingによる検索精度向上
+  enable_semantic_chunking: false  # セマンティックチャンキング（未実装）
+  enable_embedding_cache: false  # エンベディングキャッシング（未実装）
+  enable_bm25_hybrid: false  # BM25ハイブリッド検索（未実装）
+
+# Reranking設定
+reranking:
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"  # 軽量高速モデル（~80MB）
+  # Alternative: "cross-encoder/ms-marco-electra-base" (より高精度だが重い)
+  top_k_initial: 10  # 初期検索で取得する文書数（vector searchから）
+  top_k_final: 5  # Reranking後に返す最終文書数
 
 # 検索設定
 search:

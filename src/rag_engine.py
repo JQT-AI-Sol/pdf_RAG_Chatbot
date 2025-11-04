@@ -17,6 +17,7 @@ from langchain_core.runnables import RunnablePassthrough
 import google.generativeai as genai
 
 from .prompt_templates import RAG_PROMPT_TEMPLATE
+from .reranker import Reranker
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,8 @@ class RAGEngine:
         self.search_config = config.get("search", {})
         self.langfuse_config = config.get("langfuse", {})
         self.chat_config = config.get("chat", {})
+        self.rag_config = config.get("rag", {})
+        self.reranking_config = config.get("reranking", {})
 
         # Langfuse有効化チェック
         langfuse_available = LANGFUSE_AVAILABLE
@@ -69,6 +72,17 @@ class RAGEngine:
 
         # LangChain LLM初期化
         self._init_llms()
+
+        # Reranker初期化（有効な場合のみ）
+        self.reranker = None
+        if self.rag_config.get("enable_reranking", False):
+            try:
+                model_name = self.reranking_config.get("model", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+                self.reranker = Reranker(model_name=model_name)
+                logger.info(f"Reranker initialized: {model_name}")
+            except Exception as e:
+                logger.error(f"Failed to initialize Reranker: {e}")
+                logger.warning("Continuing without reranking")
 
         # 会話履歴管理の設定
         self.max_history_messages = self.chat_config.get("max_history_messages", 10)
@@ -192,6 +206,48 @@ class RAGEngine:
 
         return messages
 
+    def _rerank_results(self, query: str, results: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+        """
+        Rerankingを使用して検索結果を再順位付け
+
+        Args:
+            query: 検索クエリ
+            results: 検索結果のリスト
+            top_k: 返却する結果数
+
+        Returns:
+            list: Reranking後の検索結果
+        """
+        if not self.reranker or not results:
+            return results[:top_k]
+
+        try:
+            # 検索結果からテキストを抽出
+            documents = [result.get("content", "") for result in results]
+
+            # Rerankingを実行
+            logger.debug(f"Reranking {len(documents)} documents with query: {query[:50]}...")
+            reranked_indices_scores = self.reranker.rerank(query, documents, top_k=top_k)
+
+            # インデックスに基づいて結果を並び替え
+            reranked_results = []
+            for idx, score in reranked_indices_scores:
+                result = results[idx].copy()
+                result["rerank_score"] = score  # Rerankingスコアを追加
+                reranked_results.append(result)
+
+            logger.info(
+                f"Reranking completed: {len(results)} -> {len(reranked_results)} results",
+                extra={"top_rerank_scores": [s for _, s in reranked_indices_scores[:3]]}
+            )
+
+            return reranked_results
+
+        except Exception as e:
+            logger.error(f"Reranking failed: {e}", exc_info=True)
+            logger.warning("Falling back to original results")
+            return results[:top_k]
+
     def query(self, question: str, category: Optional[str] = None, model_type: str = "openai", chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None) -> Dict[str, Any]:
         """
         質問に対して回答を生成
@@ -215,15 +271,31 @@ class RAGEngine:
             # 1. 質問のエンベディング取得
             query_embedding = self.embedder.embed_query(question)
 
-            # 2. ベクトル検索
+            # 2. ベクトル検索（Reranking有効時はより多く取得）
+            top_k_text = self.search_config.get("top_k_text", 5)
+            if self.reranker:
+                top_k_initial = self.reranking_config.get("top_k_initial", 10)
+                logger.debug(f"Reranking enabled: fetching {top_k_initial} results for reranking")
+            else:
+                top_k_initial = top_k_text
+
             search_results = self.vector_store.search(
                 query_embedding=query_embedding,
                 category=category,
-                top_k=self.search_config.get("top_k_text", 5),
+                top_k=top_k_initial,
                 search_type="both",
             )
 
-            # 3. コンテキストの構築
+            # 3. Reranking（有効な場合）
+            if self.reranker and search_results.get("text"):
+                top_k_final = self.reranking_config.get("top_k_final", 5)
+                search_results["text"] = self._rerank_results(
+                    query=question,
+                    results=search_results["text"],
+                    top_k=top_k_final
+                )
+
+            # 4. コンテキストの構築
             context_parts = []
             image_data_list = []
 
@@ -247,7 +319,7 @@ class RAGEngine:
 
             context_text = "\n\n".join(context_parts)
 
-            # 4. LLMで回答生成
+            # 5. LLMで回答生成
             if model_type == "openai":
                 answer = self._generate_answer_openai(question, context_text, image_data_list, chat_history, uploaded_images)
             else:
@@ -437,15 +509,31 @@ class RAGEngine:
             # 1. 質問のエンベディング取得
             query_embedding = self.embedder.embed_query(question)
 
-            # 2. ベクトル検索
+            # 2. ベクトル検索（Reranking有効時はより多く取得）
+            top_k_text = self.search_config.get("top_k_text", 5)
+            if self.reranker:
+                top_k_initial = self.reranking_config.get("top_k_initial", 10)
+                logger.debug(f"Reranking enabled (streaming): fetching {top_k_initial} results for reranking")
+            else:
+                top_k_initial = top_k_text
+
             search_results = self.vector_store.search(
                 query_embedding=query_embedding,
                 category=category,
-                top_k=self.search_config.get("top_k_text", 5),
+                top_k=top_k_initial,
                 search_type="both",
             )
 
-            # 3. コンテキストの構築
+            # 3. Reranking（有効な場合）
+            if self.reranker and search_results.get("text"):
+                top_k_final = self.reranking_config.get("top_k_final", 5)
+                search_results["text"] = self._rerank_results(
+                    query=question,
+                    results=search_results["text"],
+                    top_k=top_k_final
+                )
+
+            # 4. コンテキストの構築
             context_parts = []
             image_data_list = []
 
@@ -477,7 +565,7 @@ class RAGEngine:
                 "images": image_data_list,
             }
 
-            # 4. LLMでストリーミング回答生成
+            # 5. LLMでストリーミング回答生成
             if model_type == "openai":
                 yield from self._stream_answer_openai(question, context_text, image_data_list, chat_history, uploaded_images)
             else:
