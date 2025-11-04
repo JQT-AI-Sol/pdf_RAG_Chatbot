@@ -9,7 +9,9 @@ from typing import Dict, List, Tuple, Any
 from PIL import Image
 import io
 import tiktoken
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,8 @@ class PDFProcessor:
         self.config = config
         self.pdf_config = config.get("pdf_processing", {})
         self.vision_config = config.get("vision", {})
+        self.rag_config = config.get("rag", {})
+        self.chunking_config = config.get("chunking", {})
 
         # tiktokenエンコーダーの初期化
         model_name = config.get("openai", {}).get("model_chat", "gpt-5")
@@ -36,6 +40,26 @@ class PDFProcessor:
         except KeyError:
             # モデル名が見つからない場合はcl100k_base（GPT-4系）を使用
             self.encoding = tiktoken.get_encoding("cl100k_base")
+
+        # セマンティックチャンカーの初期化
+        self.text_splitter = None
+        if self.rag_config.get("enable_semantic_chunking", False):
+            try:
+                chunk_size = self.chunking_config.get("chunk_size", self.pdf_config.get("chunk_size", 800))
+                chunk_overlap = self.chunking_config.get("chunk_overlap", self.pdf_config.get("chunk_overlap", 150))
+                separators = self.chunking_config.get("separators", ["\n\n", "\n", "。", "．", ". ", "! ", "? ", "；", "、", ", ", " ", ""])
+
+                self.text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    length_function=lambda text: len(self.encoding.encode(text)),
+                    separators=separators,
+                    keep_separator=True
+                )
+                logger.info(f"Semantic chunking initialized (chunk_size={chunk_size}, overlap={chunk_overlap})")
+            except Exception as e:
+                logger.error(f"Failed to initialize semantic chunker: {e}")
+                logger.warning("Falling back to legacy chunking")
 
     def _process_single_page(self, pdf_path: str, page_num: int, source_file: str, category: str) -> Dict[str, Any]:
         """
@@ -198,9 +222,70 @@ class PDFProcessor:
 
         return result
 
+    def _preserve_table_context(self, text: str) -> str:
+        """
+        表の前後にコンテキスト情報を保持
+        表や図の参照を検出し、段落区切りを強化
+
+        Args:
+            text: 処理対象のテキスト
+
+        Returns:
+            str: コンテキスト保持処理後のテキスト
+        """
+        patterns = [
+            r'(表\s*\d+[.:].*?)(\n)',
+            r'(図\s*\d+[.:].*?)(\n)',
+            r'(Table\s+\d+[.:].*?)(\n)',
+            r'(Figure\s+\d+[.:].*?)(\n)',
+        ]
+
+        for pattern in patterns:
+            text = re.sub(pattern, r'\1\n\n', text)
+
+        return text
+
     def _create_text_chunks(self, text: str, page_num: int, source_file: str, category: str) -> List[Dict[str, Any]]:
         """
-        テキストをチャンクに分割（tiktoken使用）
+        テキストをチャンクに分割（セマンティックまたはレガシーチャンキング）
+
+        Args:
+            text: ページから抽出したテキスト
+            page_num: ページ番号
+            source_file: ソースファイル名
+            category: カテゴリー
+
+        Returns:
+            list: テキストチャンクのリスト
+        """
+        # 表のコンテキストを保持
+        text = self._preserve_table_context(text)
+
+        # セマンティックチャンキング or レガシーチャンキング
+        if self.text_splitter:
+            # セマンティックチャンキング使用
+            chunk_texts = self.text_splitter.split_text(text)
+            chunks = []
+            for idx, chunk_text in enumerate(chunk_texts):
+                if chunk_text.strip():
+                    token_count = len(self.encoding.encode(chunk_text))
+                    chunks.append({
+                        "text": chunk_text.strip(),
+                        "page_number": page_num,
+                        "source_file": source_file,
+                        "category": category,
+                        "chunk_index": idx,
+                        "token_count": token_count,
+                    })
+            logger.debug(f"Created {len(chunks)} semantic chunks from page {page_num}")
+            return chunks
+        else:
+            # レガシーチャンキング（既存実装）
+            return self._legacy_create_text_chunks(text, page_num, source_file, category)
+
+    def _legacy_create_text_chunks(self, text: str, page_num: int, source_file: str, category: str) -> List[Dict[str, Any]]:
+        """
+        テキストをチャンクに分割（レガシー実装 - トークンベース）
 
         Args:
             text: ページから抽出したテキスト

@@ -157,9 +157,27 @@ vision:
 # RAG性能向上設定 (Phase 1: Quick Wins)
 rag:
   enable_reranking: true  # Rerankingによる検索精度向上
-  enable_semantic_chunking: false  # セマンティックチャンキング（未実装）
+  enable_semantic_chunking: true  # セマンティックチャンキングによるコンテキスト品質向上
   enable_embedding_cache: false  # エンベディングキャッシング（未実装）
   enable_bm25_hybrid: false  # BM25ハイブリッド検索（未実装）
+
+# チャンキング設定（Semantic Chunking用）
+chunking:
+  chunk_size: 800  # トークン単位でのチャンクサイズ
+  chunk_overlap: 150  # チャンク間のオーバーラップ
+  separators:  # 区切り文字の優先順位（日本語・英語対応）
+    - "\n\n"  # 段落区切り（最優先）
+    - "\n"    # 改行
+    - "。"    # 日本語の句点
+    - "．"    # 全角ピリオド
+    - ". "    # 英語の文末
+    - "! "    # 感嘆符
+    - "? "    # 疑問符
+    - "；"    # セミコロン
+    - "、"    # 読点
+    - ", "    # カンマ
+    - " "     # スペース
+    - ""      # 文字単位（最終手段）
 
 # Reranking設定
 reranking:
