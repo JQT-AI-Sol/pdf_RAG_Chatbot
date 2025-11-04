@@ -159,6 +159,7 @@ rag:
   enable_reranking: true  # Rerankingによる検索精度向上
   enable_semantic_chunking: true  # セマンティックチャンキングによるコンテキスト品質向上
   enable_embedding_cache: true  # エンベディングキャッシングによるレイテンシ削減
+  enable_vision_cache: true  # Vision解析キャッシングによるコスト削減
   enable_bm25_hybrid: false  # BM25ハイブリッド検索（未実装）
 
 # チャンキング設定（Semantic Chunking用）
@@ -192,6 +193,11 @@ cache:
     enabled: true  # エンベディングキャッシュを有効化
     directory: "./cache/embeddings"  # キャッシュディレクトリ
     max_memory_items: 1000  # メモリキャッシュの最大アイテム数（LRU）
+
+  vision:
+    enabled: true  # Vision解析キャッシュを有効化
+    directory: "./cache/vision_analysis"  # キャッシュディレクトリ
+    expiry_days: 30  # キャッシュ有効期限（日数）- 現在は未使用
 
 # 検索設定
 search:

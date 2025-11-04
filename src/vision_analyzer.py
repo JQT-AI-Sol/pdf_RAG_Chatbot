@@ -1,12 +1,16 @@
 """
-Vision AI module for analyzing tables and graphs using Gemini-2.5-flash
+Vision AI module for analyzing tables and graphs using GPT-5
 """
 
 import logging
 import os
+import base64
+import hashlib
+import json
 from typing import Dict, Any
 from pathlib import Path
-import google.generativeai as genai
+from datetime import datetime
+from openai import OpenAI
 from PIL import Image
 
 # Langfuse統合
@@ -26,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class VisionAnalyzer:
-    """Vision AIを使用して表・グラフを解析するクラス（Gemini対応）"""
+    """Vision AIを使用して表・グラフを解析するクラス（OpenAI GPT-5対応）"""
 
     def __init__(self, config: dict):
         """
@@ -36,34 +40,81 @@ class VisionAnalyzer:
             config: Vision設定
         """
         self.config = config
-        self.gemini_config = config.get("gemini", {})
+        self.openai_config = config.get("openai", {})
         self.vision_config = config.get("vision", {})
+        self.rag_config = config.get("rag", {})
+        self.cache_config = config.get("cache", {}).get("vision", {})
 
-        # Gemini APIキーの確認と設定
-        self.api_key = os.getenv("GEMINI_API_KEY")
+        # キャッシュ設定
+        self.cache_dir = None
+        if self.rag_config.get("enable_vision_cache", False) or self.cache_config.get("enabled", False):
+            try:
+                cache_dir_path = self.cache_config.get("directory", "./cache/vision_analysis")
+                self.cache_dir = Path(cache_dir_path)
+                self.cache_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Vision cache enabled: {cache_dir_path}")
+            except Exception as e:
+                logger.error(f"Failed to initialize vision cache: {e}")
+                logger.warning("Continuing without vision caching")
+
+        # OpenAI APIキーの確認と設定
+        self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_key_valid = bool(self.api_key)
 
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY environment variable is not set - vision analysis will be disabled")
-            logger.warning("To enable vision analysis, please set GEMINI_API_KEY in your .env file")
-            self.model_name = self.gemini_config.get("model_vision", "gemini-2.5-pro")
-            self.model = None
+            logger.warning("OPENAI_API_KEY environment variable is not set - vision analysis will be disabled")
+            logger.warning("To enable vision analysis, please set OPENAI_API_KEY in your .env file")
+            self.model_name = self.openai_config.get("model_vision", "gpt-5")
+            self.client = None
         else:
-            # Native Gemini SDK初期化
+            # OpenAI クライアント初期化
             try:
-                genai.configure(api_key=self.api_key)
-                self.model_name = self.gemini_config.get("model_vision", "gemini-2.5-pro")
-                self.model = genai.GenerativeModel(model_name=self.model_name)
+                self.client = OpenAI(api_key=self.api_key)
+                self.model_name = self.openai_config.get("model_vision", "gpt-5")
                 logger.info(f"VisionAnalyzer initialized with model: {self.model_name}")
             except Exception as e:
-                logger.error(f"Failed to initialize Gemini: {e}")
+                logger.error(f"Failed to initialize OpenAI: {e}")
                 self.api_key_valid = False
-                self.model = None
+                self.client = None
+
+    def _encode_image_to_base64(self, image_path: str) -> str:
+        """
+        画像をbase64エンコード
+
+        Args:
+            image_path: 画像ファイルのパス
+
+        Returns:
+            str: base64エンコードされた画像データ
+        """
+        try:
+            with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Error encoding image {image_path}: {e}")
+            raise
+
+    def _get_image_hash(self, image_path: str) -> str:
+        """
+        画像ファイルのSHA256ハッシュを計算
+
+        Args:
+            image_path: 画像ファイルのパス
+
+        Returns:
+            str: SHA256ハッシュ値
+        """
+        try:
+            with open(image_path, 'rb') as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except Exception as e:
+            logger.error(f"Error computing hash for {image_path}: {e}")
+            raise
 
     @observe(name="vision_analysis")
     def analyze_image(self, image_path: str, content_type: str = "table") -> Dict[str, Any]:
         """
-        画像（表・グラフ）を解析（Native Gemini SDK使用）
+        画像（表・グラフ）を解析（OpenAI Vision API使用）
 
         Args:
             image_path: 画像ファイルのパス
@@ -77,7 +128,7 @@ class VisionAnalyzer:
             ValueError: API応答が不正な場合、またはAPIキーが未設定の場合
             Exception: その他のエラー
         """
-        logger.info(f"Analyzing {content_type} image with Gemini: {image_path}")
+        logger.info(f"Analyzing {content_type} image with GPT-5: {image_path}")
 
         # Langfuseコンテキストのインポート（詳細トレース用）
         if LANGFUSE_AVAILABLE:
@@ -88,9 +139,29 @@ class VisionAnalyzer:
         else:
             langfuse_context = None
 
+        # キャッシュチェック（ファイル存在確認の前に）
+        if self.cache_dir:
+            try:
+                # 画像ファイルが存在する場合のみキャッシュチェック
+                if Path(image_path).exists():
+                    image_hash = self._get_image_hash(image_path)
+                    cache_key = f"{image_hash}_{content_type}"
+                    cache_file = self.cache_dir / f"{cache_key}.json"
+
+                    if cache_file.exists():
+                        try:
+                            with open(cache_file, 'r', encoding='utf-8') as f:
+                                cached_data = json.load(f)
+                            logger.info(f"Vision cache hit: {cache_key[:16]}... (skipping API call)")
+                            return cached_data['result']
+                        except Exception as e:
+                            logger.warning(f"Failed to load vision cache: {e}")
+            except Exception as e:
+                logger.warning(f"Cache check failed: {e}")
+
         # APIキーチェック
-        if not self.api_key_valid or self.model is None:
-            error_msg = "GEMINI_API_KEY is not set or invalid. Vision analysis is disabled. Please set GEMINI_API_KEY in your .env file."
+        if not self.api_key_valid or self.client is None:
+            error_msg = "OPENAI_API_KEY is not set or invalid. Vision analysis is disabled. Please set OPENAI_API_KEY in your .env file."
             logger.error(error_msg)
             raise ValueError(error_msg)
 
@@ -143,22 +214,43 @@ class VisionAnalyzer:
                 except Exception as e:
                     logger.warning(f"Failed to update Langfuse context: {e}")
 
-            # 画像を開く
-            image = Image.open(image_path)
-            logger.debug(f"Image loaded: {image_path}")
+            # 画像をbase64エンコード
+            logger.debug(f"Encoding image: {image_path}")
+            base64_image = self._encode_image_to_base64(image_path)
 
-            # Gemini API呼び出し
+            # 画像の拡張子を取得してMIMEタイプを決定
+            image_ext = Path(image_path).suffix.lower()
+            mime_type = "image/png" if image_ext == ".png" else "image/jpeg"
+
+            # OpenAI API呼び出し
             try:
-                logger.debug(f"Calling Gemini with model: {self.model_name}")
-                response = self.model.generate_content([prompt, image])
+                logger.debug(f"Calling OpenAI with model: {self.model_name}")
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{mime_type};base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=4096
+                )
 
-                if not response or not response.text:
-                    error_msg = f"Empty response from Gemini API for image: {image_path}"
+                if not response.choices or not response.choices[0].message.content:
+                    error_msg = f"Empty response from OpenAI API for image: {image_path}"
                     logger.error(error_msg)
                     raise ValueError(error_msg)
 
-                raw_response = response.text
-                logger.debug(f"Gemini API response length: {len(raw_response)} characters")
+                raw_response = response.choices[0].message.content
+                logger.debug(f"OpenAI API response length: {len(raw_response)} characters")
 
                 # Langfuseに生応答を記録
                 has_json_block = "```json" in raw_response.lower()
@@ -167,7 +259,7 @@ class VisionAnalyzer:
                 if langfuse_context:
                     try:
                         langfuse_context.update_current_observation(
-                            output=raw_response,  # Geminiの生応答
+                            output=raw_response,  # OpenAIの生応答
                             metadata={
                                 "response_length": len(raw_response),
                                 "has_json_block": has_json_block,
@@ -181,16 +273,16 @@ class VisionAnalyzer:
                 analysis_result = raw_response
 
             except Exception as e:
-                error_msg = f"Gemini API call failed for {image_path}: {type(e).__name__}: {str(e)}"
+                error_msg = f"OpenAI API call failed for {image_path}: {type(e).__name__}: {str(e)}"
                 logger.error(error_msg)
                 raise
 
-            # 平文テキストプロンプトを使用した場合、Geminiが勝手にJSON形式で返すことがあるので、
+            # 平文テキストプロンプトを使用した場合、モデルが勝手にJSON形式で返すことがあるので、
             # JSONブロックを検出して警告し、平文に変換する
             json_removed = False
             if content_type in ["table", "full_page"]:
                 if "```json" in analysis_result.lower() or analysis_result.strip().startswith("{"):
-                    logger.warning(f"[ISSUE] Gemini returned JSON format despite plain text prompt for {content_type}")
+                    logger.warning(f"[ISSUE] OpenAI returned JSON format despite plain text prompt for {content_type}")
                     logger.warning(f"[ISSUE] Original response (first 200 chars): {analysis_result[:200]}")
 
                     # JSONブロックを除去して平文に変換
@@ -230,7 +322,25 @@ class VisionAnalyzer:
                 "model": self.model_name,
             }
 
-            logger.info(f"Successfully analyzed {content_type} with Gemini (result: {len(analysis_result)} chars)")
+            # キャッシュに保存
+            if self.cache_dir:
+                try:
+                    image_hash = self._get_image_hash(image_path)
+                    cache_key = f"{image_hash}_{content_type}"
+                    cache_file = self.cache_dir / f"{cache_key}.json"
+
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'result': result,
+                            'timestamp': datetime.now().isoformat(),
+                            'content_type': content_type,
+                            'image_hash': image_hash
+                        }, f, ensure_ascii=False, indent=2)
+                    logger.debug(f"Cached vision result: {cache_key[:16]}...")
+                except Exception as e:
+                    logger.warning(f"Failed to save vision cache: {e}")
+
+            logger.info(f"Successfully analyzed {content_type} with GPT-5 (result: {len(analysis_result)} chars)")
             return result
 
         except Exception as e:
