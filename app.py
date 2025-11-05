@@ -829,6 +829,7 @@ def main_area():
                         if chunk_data["type"] == "context":
                             # コンテキスト情報を保存
                             context_data = chunk_data
+                            logger.info(f"[DEBUG] Context data received: sources={len(chunk_data.get('sources', {}).get('text', []))} text, {len(chunk_data.get('sources', {}).get('images', []))} images")
                         elif chunk_data["type"] == "chunk":
                             full_answer += chunk_data["content"]
                             answer_placeholder.markdown(full_answer + "▌")  # カーソル表示
@@ -844,6 +845,9 @@ def main_area():
                             "context": context_data.get("context", ""),
                             "images": context_data.get("images", [])
                         }
+                        logger.info(f"[DEBUG] result_data constructed: sources={len(result_data.get('sources', {}).get('text', []))} text, {len(result_data.get('sources', {}).get('images', []))} images")
+                    else:
+                        logger.warning("[DEBUG] context_data is None - result_data remains None")
 
                 except Exception as stream_error:
                     # ストリーミングエラー時は通常モードにフォールバック
@@ -904,66 +908,72 @@ def main_area():
                             pdf_references[source_file]['pages'].add(page_number)
 
                         # 📸 参照ページプレビュー（上位3-5ページ）
+                        logger.info(f"[DEBUG] Checking page preview condition: result_data={result_data is not None}, has_sources={result_data.get('sources') if result_data else None}")
                         if result_data and result_data.get('sources'):
+                            logger.info(f"[DEBUG] Calling get_top_reference_pages with sources")
                             top_pages = st.session_state.rag_engine.get_top_reference_pages(
                                 result_data['sources'],
                                 top_n=5
                             )
+                            logger.info(f"[DEBUG] get_top_reference_pages returned {len(top_pages)} pages")
+                        else:
+                            logger.warning("[DEBUG] Skipping page preview - result_data or sources missing")
+                            top_pages = []
 
-                            if top_pages:
-                                with st.expander(f"📸 参照ページプレビュー ({len(top_pages)}ページ)", expanded=True):
-                                    st.caption("関連度の高い順に表示しています（検索クエリをハイライト表示）")
+                        if top_pages:
+                            with st.expander(f"📸 参照ページプレビュー ({len(top_pages)}ページ)", expanded=True):
+                                st.caption("関連度の高い順に表示しています（検索クエリをハイライト表示）")
 
-                                    # ページごとにグループ化（PDFファイル別）
-                                    pages_by_pdf = {}
-                                    for page_info in top_pages:
-                                        source_file = page_info['source_file']
-                                        if source_file not in pages_by_pdf:
-                                            pages_by_pdf[source_file] = []
-                                        pages_by_pdf[source_file].append(page_info)
+                                # ページごとにグループ化（PDFファイル別）
+                                pages_by_pdf = {}
+                                for page_info in top_pages:
+                                    source_file = page_info['source_file']
+                                    if source_file not in pages_by_pdf:
+                                        pages_by_pdf[source_file] = []
+                                    pages_by_pdf[source_file].append(page_info)
 
-                                    # PDFファイルごとにページ画像を表示
-                                    for source_file, pages in pages_by_pdf.items():
-                                        st.markdown(f"**📄 {source_file}**")
+                                # PDFファイルごとにページ画像を表示
+                                for source_file, pages in pages_by_pdf.items():
+                                    st.markdown(f"**📄 {source_file}**")
 
-                                        # 最大3列でページを表示
-                                        cols_per_row = min(3, len(pages))
-                                        for i in range(0, len(pages), cols_per_row):
-                                            cols = st.columns(cols_per_row)
-                                            for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
-                                                page_num = page_info['page_number']
-                                                score = page_info.get('score')
+                                    # 最大3列でページを表示
+                                    cols_per_row = min(3, len(pages))
+                                    for i in range(0, len(pages), cols_per_row):
+                                        cols = st.columns(cols_per_row)
+                                        for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
+                                            page_num = page_info['page_number']
+                                            score = page_info.get('score')
 
-                                                with cols[col_idx]:
-                                                    # ハイライト付き画像を取得
-                                                    logger.info(f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}")
-                                                    image = extract_page_with_highlight(
-                                                        source_file=source_file,
-                                                        page_number=page_num,
-                                                        query=question,  # 検索クエリをハイライト
-                                                        _vector_store=st.session_state.vector_store,
-                                                        _rag_engine=st.session_state.rag_engine,
-                                                        _vision_analyzer=st.session_state.vision_analyzer,
-                                                        dpi=150,
-                                                        target_width=1000
-                                                    )
-                                                    logger.info(f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
+                                            with cols[col_idx]:
+                                                # ハイライト付き画像を取得
+                                                logger.info(f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}")
+                                                image = extract_page_with_highlight(
+                                                    source_file=source_file,
+                                                    page_number=page_num,
+                                                    query=question,  # 検索クエリをハイライト
+                                                    _vector_store=st.session_state.vector_store,
+                                                    _rag_engine=st.session_state.rag_engine,
+                                                    _vision_analyzer=st.session_state.vision_analyzer,
+                                                    dpi=150,
+                                                    target_width=1000
+                                                )
+                                                logger.info(f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
 
-                                                    if image:
-                                                        # キャプション作成
-                                                        caption = f"ページ {page_num}"
-                                                        if score is not None:
-                                                            caption += f" (関連度: {score:.3f})"
+                                                if image:
+                                                    # キャプション作成
+                                                    caption = f"ページ {page_num}"
+                                                    if score is not None:
+                                                        caption += f" (関連度: {score:.3f})"
 
-                                                        st.image(image, caption=caption, use_container_width=True)
+                                                    st.image(image, caption=caption, use_container_width=True)
 
-                                                        # 内容プレビュー
-                                                        with st.expander("📝 内容プレビュー"):
-                                                            st.text(page_info.get('content_preview', ''))
-                                                    else:
-                                                        st.warning(f"ページ {page_num} の画像を取得できませんでした")
+                                                    # 内容プレビュー
+                                                    with st.expander("📝 内容プレビュー"):
+                                                        st.text(page_info.get('content_preview', ''))
+                                                else:
+                                                    st.warning(f"ページ {page_num} の画像を取得できませんでした")
 
-                                        st.markdown("---")
+                                    st.markdown("---")
 
                         # PDFファイルごとに表示
                         with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
