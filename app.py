@@ -825,10 +825,10 @@ def main_area():
                                                     st.image(image, caption=caption, use_container_width=True)
 
                                                     # 内容プレビュー
-                                                with st.expander("📝 内容プレビュー"):
-                                                    st.text(page_info.get('content_preview', ''))
-                                            else:
-                                                st.warning(f"ページ {page_num} の画像を取得できませんでした")
+                                                    with st.expander("📝 内容プレビュー"):
+                                                        st.text(page_info.get('content_preview', ''))
+                                                else:
+                                                    st.warning(f"ページ {page_num} の画像を取得できませんでした")
 
                                 st.markdown("---")
 
