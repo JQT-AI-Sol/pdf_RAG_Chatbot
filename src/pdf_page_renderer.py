@@ -369,7 +369,9 @@ def extract_keywords_llm(query: str, _rag_engine) -> List[str]:
 def find_text_positions(
     pdf_path: Path,
     page_number: int,
-    search_terms: List[str]
+    search_terms: List[str],
+    vision_analyzer=None,
+    dpi: int = DEFAULT_DPI
 ) -> List[Dict[str, float]]:
     """
     PDFページ内で指定されたテキストの座標を検出
@@ -378,6 +380,8 @@ def find_text_positions(
         pdf_path: PDFファイルパス
         page_number: ページ番号（1始まり）
         search_terms: 検索するテキストのリスト
+        vision_analyzer: VisionAnalyzerインスタンス（OCRフォールバック用、省略可）
+        dpi: OCR用画像の解像度（デフォルト: 150）
 
     Returns:
         list: 座標情報のリスト
@@ -401,6 +405,44 @@ def find_text_positions(
 
             # ページ内の全テキストを単語単位で取得
             words = page.extract_words()
+
+            # OCRフォールバック: pdfplumberで抽出できない場合
+            if len(words) == 0 and vision_analyzer and PDF2IMAGE_AVAILABLE:
+                logger.warning(f"⚠️ PDF page {page_number} has no extractable text - attempting OCR")
+
+                try:
+                    # PDFページを画像化
+                    images = convert_from_path(
+                        str(pdf_path),
+                        dpi=dpi,
+                        first_page=page_number,
+                        last_page=page_number,
+                        fmt='png'
+                    )
+
+                    if images and len(images) > 0:
+                        # 一時ファイルとして保存
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                            tmp_path = tmp_file.name
+                            images[0].save(tmp_path, 'PNG')
+
+                        try:
+                            # Vision API OCR実行
+                            logger.info(f"🔍 Running OCR on page {page_number} using Vision API...")
+                            ocr_result = vision_analyzer.ocr_page(tmp_path)
+                            words = ocr_result.get("words", [])
+                            logger.info(f"✅ OCR extracted {len(words)} words from page {page_number}")
+                        finally:
+                            # 一時ファイル削除
+                            import os
+                            if os.path.exists(tmp_path):
+                                os.remove(tmp_path)
+                    else:
+                        logger.error(f"❌ Failed to convert PDF page {page_number} to image for OCR")
+                except Exception as ocr_error:
+                    logger.error(f"❌ OCR fallback failed: {ocr_error}", exc_info=True)
+                    # OCR失敗時は空のwordsのまま続行
 
             # 各検索語に対してマッチングを実行
             for search_term in search_terms:
@@ -504,6 +546,7 @@ def extract_page_with_highlight(
     query: str,
     _vector_store,
     _rag_engine=None,
+    _vision_analyzer=None,
     use_llm_keywords: bool = True,
     _cache_version: int = 3,  # v3: Force cache invalidation + debug logs
     dpi: int = DEFAULT_DPI,
@@ -518,6 +561,7 @@ def extract_page_with_highlight(
         query: 検索クエリ（ハイライト対象）
         _vector_store: VectorStoreインスタンス
         _rag_engine: RAGEngineインスタンス（LLMキーワード抽出に使用、省略可）
+        _vision_analyzer: VisionAnalyzerインスタンス（OCRフォールバック用、省略可）
         use_llm_keywords: LLMを使用したキーワード抽出を有効化（デフォルト: True）
         _cache_version: キャッシュバージョン（変更時にインクリメント、通常変更不要）
         dpi: 解像度
@@ -573,7 +617,7 @@ def extract_page_with_highlight(
             with pdfplumber.open(pdf_path) as pdf:
                 page = pdf.pages[page_number - 1]
                 page_height = page.height
-                text_positions = find_text_positions(pdf_path, page_number, search_terms)
+                text_positions = find_text_positions(pdf_path, page_number, search_terms, _vision_analyzer, dpi)
                 logger.info(f"📊 Text positions found: {len(text_positions)}")
         else:
             logger.warning("⚠️ No search terms to highlight")

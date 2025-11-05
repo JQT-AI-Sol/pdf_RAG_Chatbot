@@ -743,6 +743,7 @@ def main_area():
                                                 query=user_query,
                                                 _vector_store=st.session_state.vector_store,
                                                 _rag_engine=st.session_state.rag_engine,
+                                                _vision_analyzer=st.session_state.vision_analyzer,
                                                 dpi=150,
                                                 target_width=1000
                                             )
@@ -942,6 +943,7 @@ def main_area():
                                                         query=question,  # 検索クエリをハイライト
                                                         _vector_store=st.session_state.vector_store,
                                                         _rag_engine=st.session_state.rag_engine,
+                                                        _vision_analyzer=st.session_state.vision_analyzer,
                                                         dpi=150,
                                                         target_width=1000
                                                     )

@@ -179,6 +179,9 @@ class VisionAnalyzer:
             elif content_type == "graph":
                 # グラフはJSON形式で構造化データを抽出
                 prompt = self.vision_config.get("analysis_prompt_graph", "")
+            elif content_type == "ocr":
+                # OCR: JSON形式で座標付きテキストを抽出
+                prompt = self.vision_config.get("analysis_prompt_ocr", "")
             else:
                 # デフォルトは平文テキスト形式
                 prompt = self.vision_config.get("analysis_prompt_table", "")
@@ -370,3 +373,69 @@ class VisionAnalyzer:
             dict: 解析結果
         """
         return self.analyze_image(image_path, content_type="graph")
+
+    def ocr_page(self, image_path: str) -> Dict[str, Any]:
+        """
+        スキャンPDFページからOCRでテキストと座標を抽出
+
+        Args:
+            image_path: PDF画像のパス（PNG/JPEG）
+
+        Returns:
+            dict: OCR結果
+                {
+                    "words": [{"text": str, "x0": float, "y0": float, "x1": float, "y1": float}],
+                    "full_text": str,
+                    "cached": bool
+                }
+        """
+        logger.info(f"🔍 OCR analysis for: {image_path}")
+
+        try:
+            # analyze_image()を使用してOCR実行
+            result = self.analyze_image(image_path, content_type="ocr")
+
+            # レスポンスのJSONをパース
+            description = result.get("description", "")
+
+            # JSONブロックを抽出
+            import re
+            import json
+
+            # ```json ... ``` ブロックを探す
+            json_match = re.search(r'```json\s*\n(.*?)\n```', description, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # JSONブロックなしの場合、全体をJSONとしてパース試行
+                json_str = description.strip()
+
+            ocr_data = json.loads(json_str)
+
+            # pdfplumber形式に変換
+            words = []
+            for word_data in ocr_data.get("words", []):
+                bbox = word_data.get("bbox", {})
+                words.append({
+                    "text": word_data.get("text", ""),
+                    "x0": bbox.get("x0", 0),
+                    "top": bbox.get("y0", 0),  # pdfplumberは "top" を使用
+                    "x1": bbox.get("x1", 0),
+                    "bottom": bbox.get("y1", 0),  # pdfplumberは "bottom" を使用
+                })
+
+            logger.info(f"✅ OCR extracted {len(words)} words from {image_path}")
+
+            return {
+                "words": words,
+                "full_text": ocr_data.get("full_text", ""),
+                "cached": False  # キャッシュヒットはanalyze_image()内で判定済み
+            }
+
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Failed to parse OCR JSON response: {e}")
+            logger.error(f"Response was: {description[:500]}...")
+            return {"words": [], "full_text": "", "cached": False}
+        except Exception as e:
+            logger.error(f"❌ OCR analysis failed: {e}", exc_info=True)
+            return {"words": [], "full_text": "", "cached": False}
