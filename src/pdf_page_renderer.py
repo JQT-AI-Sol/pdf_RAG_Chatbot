@@ -232,19 +232,27 @@ def tokenize_query(query: str) -> List[str]:
     Returns:
         list: トークンのリスト
     """
+    if not query or not query.strip():
+        logger.warning("Empty query provided for tokenization")
+        return []
+
     try:
         import MeCab
         mecab = MeCab.Tagger("-Owakati")
         tokens = mecab.parse(query).strip().split()
-        logger.debug(f"Tokenized query: {query} -> {tokens}")
+        logger.info(f"✅ MeCab tokenization successful: '{query}' -> {tokens}")
         return tokens
-    except ImportError:
-        logger.warning("MeCab not available, using simple whitespace tokenization")
+    except ImportError as e:
+        logger.warning(f"⚠️ MeCab not available ({e}), using simple whitespace tokenization")
         # MeCabが使えない場合は空白で分割
-        return query.split()
+        tokens = query.split()
+        logger.info(f"Fallback tokenization: '{query}' -> {tokens}")
+        return tokens
     except Exception as e:
-        logger.error(f"Error tokenizing query: {e}")
-        return query.split()
+        logger.error(f"❌ Error tokenizing query: {e}")
+        tokens = query.split()
+        logger.info(f"Error fallback tokenization: '{query}' -> {tokens}")
+        return tokens
 
 
 def find_text_positions(
@@ -300,11 +308,13 @@ def find_text_positions(
                             "y1": word['bottom'],
                         })
 
-            logger.info(f"Found {len(positions)} text positions for {len(search_terms)} search terms on page {page_number}")
+            logger.info(f"📍 Found {len(positions)} text positions for {len(search_terms)} search terms on page {page_number}")
+            if len(positions) == 0 and len(search_terms) > 0:
+                logger.warning(f"⚠️ No text positions found for search terms: {search_terms}")
             return positions
 
     except Exception as e:
-        logger.error(f"Error finding text positions: {e}", exc_info=True)
+        logger.error(f"❌ Error finding text positions: {e}", exc_info=True)
         return []
 
 
@@ -411,7 +421,9 @@ def extract_page_with_highlight(
             return None
 
         # クエリをトークン化
+        logger.info(f"🔍 Highlighting query: '{query}' for {source_file} page {page_number}")
         search_terms = tokenize_query(query) if query else []
+        logger.info(f"🔤 Search terms: {search_terms}")
 
         # テキスト位置を検出
         text_positions = []
@@ -422,6 +434,9 @@ def extract_page_with_highlight(
                 page = pdf.pages[page_number - 1]
                 page_height = page.height
                 text_positions = find_text_positions(pdf_path, page_number, search_terms)
+                logger.info(f"📊 Text positions found: {len(text_positions)}")
+        else:
+            logger.warning("⚠️ No search terms to highlight")
 
         # ページを画像に変換
         images = convert_from_path(
@@ -441,7 +456,9 @@ def extract_page_with_highlight(
         # ハイライトを適用
         if text_positions and page_height > 0:
             image = highlight_text_on_image(image, text_positions, page_height, dpi)
-            logger.info(f"Applied highlighting to page {page_number} of {source_file}")
+            logger.info(f"✅ Applied {len(text_positions)} highlights to page {page_number} of {source_file}")
+        elif search_terms:
+            logger.warning(f"⚠️ No highlights applied (text_positions={len(text_positions)}, page_height={page_height})")
 
         # 画像サイズを調整
         if image.width > target_width:
