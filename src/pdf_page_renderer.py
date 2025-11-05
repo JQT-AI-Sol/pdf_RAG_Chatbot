@@ -243,16 +243,56 @@ def tokenize_query(query: str) -> List[str]:
         logger.info(f"✅ MeCab tokenization successful: '{query}' -> {tokens}")
         return tokens
     except ImportError as e:
-        logger.warning(f"⚠️ MeCab not available ({e}), using simple whitespace tokenization")
-        # MeCabが使えない場合は空白で分割
-        tokens = query.split()
+        logger.warning(f"⚠️ MeCab not available ({e}), using Japanese-aware fallback")
+        # MeCabが使えない場合は日本語対応フォールバック
+        tokens = _japanese_aware_tokenize(query)
         logger.info(f"Fallback tokenization: '{query}' -> {tokens}")
         return tokens
     except Exception as e:
         logger.error(f"❌ Error tokenizing query: {e}")
-        tokens = query.split()
+        tokens = _japanese_aware_tokenize(query)
         logger.info(f"Error fallback tokenization: '{query}' -> {tokens}")
         return tokens
+
+
+def _japanese_aware_tokenize(text: str) -> List[str]:
+    """
+    日本語対応の簡易トークン化（MeCabが使えない場合のフォールバック）
+
+    Args:
+        text: トークン化するテキスト
+
+    Returns:
+        list: トークンのリスト
+    """
+    import re
+
+    # 記号・句読点を削除
+    text = re.sub(r'[「」『』【】、。？！・\s]+', ' ', text)
+
+    # 英数字と日本語文字を分離
+    tokens = []
+    current_token = ""
+
+    for char in text:
+        if char.isspace():
+            if current_token:
+                tokens.append(current_token)
+                current_token = ""
+        else:
+            current_token += char
+            # 2-3文字ごとに区切る（日本語の場合）
+            if len(current_token) >= 3 and not char.isascii():
+                tokens.append(current_token)
+                current_token = ""
+
+    if current_token:
+        tokens.append(current_token)
+
+    # 短すぎるトークンを除外（1文字のひらがな・カタカナなど）
+    tokens = [t for t in tokens if len(t) >= 2 or t.isalnum()]
+
+    return tokens
 
 
 def find_text_positions(
