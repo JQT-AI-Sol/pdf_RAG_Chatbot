@@ -6,6 +6,8 @@ import streamlit as st
 import logging
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import importlib
+import sys
 
 # src モジュールのインポート
 from src.utils import load_config, load_environment, ensure_directories, setup_logging, encode_pdf_to_base64
