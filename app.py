@@ -737,6 +737,7 @@ def main_area():
                                                 page_number=page_num,
                                                 query=user_query,
                                                 _vector_store=st.session_state.vector_store,
+                                                _rag_engine=st.session_state.rag_engine,
                                                 dpi=150,
                                                 target_width=1000
                                             )
@@ -933,6 +934,7 @@ def main_area():
                                                         page_number=page_num,
                                                         query=question,  # 検索クエリをハイライト
                                                         _vector_store=st.session_state.vector_store,
+                                                        _rag_engine=st.session_state.rag_engine,
                                                         dpi=150,
                                                         target_width=1000
                                                     )

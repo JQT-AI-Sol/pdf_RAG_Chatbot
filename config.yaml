@@ -154,6 +154,33 @@ vision:
       "insights": "..."
     }
 
+# PDFページハイライト設定
+pdf_highlighting:
+  enabled: true  # PDFページプレビュー機能を有効化
+  use_llm_keywords: true  # LLMを使用したキーワード抽出（推奨）
+  # falseの場合はMeCabトークン化にフォールバック
+
+  # 表示設定
+  max_pages_to_display: 5  # 表示する最大ページ数
+  columns_per_row: 3  # 1行あたりの列数（グリッドレイアウト）
+
+  # 画像生成設定
+  dpi: 150  # ページ画像の解像度（高いほど鮮明だが重い）
+  target_width: 1000  # 画像の幅（ピクセル）
+
+  # ハイライト設定
+  highlight_color:
+    r: 255  # 赤成分 (0-255)
+    g: 255  # 緑成分 (0-255)
+    b: 0    # 青成分 (0-255)
+    alpha: 80  # 透明度 (0-255、低いほど透明)
+  highlight_padding: 2  # ハイライト矩形のパディング（ピクセル）
+
+  # LLMキーワード抽出設定
+  llm_extraction:
+    max_keywords: 10  # 抽出する最大キーワード数
+    min_keyword_length: 2  # 最小キーワード長（文字数）
+
 # RAG性能向上設定 (Phase 1: Quick Wins)
 rag:
   enable_reranking: true  # Rerankingによる検索精度向上

@@ -295,6 +295,69 @@ def _japanese_aware_tokenize(text: str) -> List[str]:
     return tokens
 
 
+def extract_keywords_llm(query: str, _rag_engine) -> List[str]:
+    """
+    LLMを使用してクエリから重要キーワードのみを抽出
+
+    Args:
+        query: ユーザークエリ
+        _rag_engine: RAGEngineインスタンス（LLMアクセス用）
+
+    Returns:
+        list: 抽出された重要キーワードのリスト
+    """
+    if not query or not query.strip():
+        logger.warning("Empty query provided for LLM keyword extraction")
+        return []
+
+    if not _rag_engine:
+        logger.warning("RAGEngine not available for LLM keyword extraction")
+        return tokenize_query(query)
+
+    try:
+        from langchain_core.messages import HumanMessage
+
+        prompt = f"""以下の質問から、PDFページ上でハイライトすべき重要なキーワードのみを抽出してください。
+
+**除外すべきもの:**
+- 助詞（の、は、を、が、に、で、と、や、から、まで、より、へ）
+- 指示語（この、その、あの、どの、どれ、いつ、どこ）
+- 一般的な動詞（する、ある、いる、なる、行う、示す）
+- 疑問詞単体（何、誰、いつ、どこ、なぜ、どう）
+- 1-2文字の断片や活用語尾
+
+**抽出すべきもの:**
+- 名詞（特に固有名詞、専門用語、組織名、人名）
+- 重要な動詞・形容詞（核心的な動作や状態）
+- 数値や日付
+- 複合語（例: 「因果関係」「認定否認」）
+
+質問: {query}
+
+重要キーワードをカンマ区切りで出力してください（説明不要、キーワードのみ）:"""
+
+        # LLM呼び出し（temperature=0で確定的な出力）
+        response = _rag_engine.openai_llm.invoke([HumanMessage(content=prompt)])
+        keywords_text = response.content.strip()
+
+        # カンマまたはスペースで分割
+        keywords = []
+        for k in keywords_text.replace('、', ',').split(','):
+            k = k.strip()
+            if k and len(k) >= 2:  # 1文字キーワードは除外
+                keywords.append(k)
+
+        logger.info(f"🤖 LLM keyword extraction: '{query}' -> {keywords}")
+        return keywords if keywords else tokenize_query(query)
+
+    except Exception as e:
+        logger.error(f"❌ LLM keyword extraction failed: {e}")
+        # フォールバック: 既存のトークン化
+        fallback_keywords = tokenize_query(query)
+        logger.info(f"Fallback to tokenization: {fallback_keywords}")
+        return fallback_keywords
+
+
 def find_text_positions(
     pdf_path: Path,
     page_number: int,
@@ -432,6 +495,8 @@ def extract_page_with_highlight(
     page_number: int,
     query: str,
     _vector_store,
+    _rag_engine=None,
+    use_llm_keywords: bool = True,
     dpi: int = DEFAULT_DPI,
     target_width: int = DEFAULT_WIDTH
 ) -> Optional[Image.Image]:
@@ -443,6 +508,8 @@ def extract_page_with_highlight(
         page_number: ページ番号（1始まり）
         query: 検索クエリ（ハイライト対象）
         _vector_store: VectorStoreインスタンス
+        _rag_engine: RAGEngineインスタンス（LLMキーワード抽出に使用、省略可）
+        use_llm_keywords: LLMを使用したキーワード抽出を有効化（デフォルト: True）
         dpi: 解像度
         target_width: 画像幅
 
@@ -460,10 +527,25 @@ def extract_page_with_highlight(
             logger.error(f"Failed to get PDF path: {source_file}")
             return None
 
-        # クエリをトークン化
+        # クエリからキーワードを抽出（LLM or トークン化）
         logger.info(f"🔍 Highlighting query: '{query}' for {source_file} page {page_number}")
-        search_terms = tokenize_query(query) if query else []
-        logger.info(f"🔤 Search terms: {search_terms}")
+
+        if query:
+            # LLMベースのキーワード抽出（推奨）
+            if use_llm_keywords and _rag_engine is not None:
+                try:
+                    search_terms = extract_keywords_llm(query, _rag_engine)
+                    logger.info(f"🤖 LLM-extracted keywords: {search_terms}")
+                except Exception as e:
+                    logger.warning(f"⚠️ LLM keyword extraction failed: {e}, falling back to tokenization")
+                    search_terms = tokenize_query(query)
+                    logger.info(f"🔤 Fallback tokenized keywords: {search_terms}")
+            else:
+                # トークン化（フォールバック）
+                search_terms = tokenize_query(query)
+                logger.info(f"🔤 Tokenized keywords: {search_terms}")
+        else:
+            search_terms = []
 
         # テキスト位置を検出
         text_positions = []
