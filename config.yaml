@@ -200,6 +200,7 @@ vision:
 # PDFページハイライト設定
 pdf_highlighting:
   enabled: true  # PDFページプレビュー機能を有効化
+  method: "hybrid"  # ハイライト方式: "keyword", "embedding", "llm", "hybrid"
   use_llm_keywords: true  # LLMを使用したキーワード抽出（推奨）
   # falseの場合はMeCabトークン化にフォールバック
 
@@ -223,6 +224,20 @@ pdf_highlighting:
   llm_extraction:
     max_keywords: 10  # 抽出する最大キーワード数
     min_keyword_length: 2  # 最小キーワード長（文字数）
+
+  # ハイブリッドモード設定（method="hybrid"の場合）
+  hybrid:
+    embedding_threshold: 0.7  # エンベディング類似度閾値（0-1）
+    max_candidates: 10  # Stage 1で絞り込む候補文数
+    max_final: 5  # Stage 2で最終選択する文数
+    use_llm_refinement: true  # LLMによる精査を有効化
+    fallback_to_keyword: true  # エラー時にキーワード方式にフォールバック
+
+  # キーワードモード設定（method="keyword"またはフォールバック時）
+  keyword:
+    min_length: 2  # 最小キーワード長（文字）
+    use_unicode_normalization: true  # Unicode正規化（日本語対応）
+    case_insensitive: false  # 大文字小文字を区別しない（日本語では無効）
 
 # RAG性能向上設定 (Phase 1: Quick Wins)
 rag:

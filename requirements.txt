@@ -47,3 +47,6 @@ sentence-transformers>=2.7.0
 # BM25 Hybrid Search (Phase 1: Performance Improvement)
 rank-bm25>=0.2.2
 mecab-python3>=1.0.6  # Optional: For Japanese tokenization
+
+# Hybrid Highlighting (for embedding similarity calculation)
+scikit-learn>=1.3.0

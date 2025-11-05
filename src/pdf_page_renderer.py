@@ -122,6 +122,14 @@ def create_pdf_annotations_pymupdf(
                 ...
             ]
     """
+    import unicodedata
+
+    logger.info(f"🔍 create_pdf_annotations_pymupdf() called")
+    logger.info(f"   pdf_path={pdf_path}")
+    logger.info(f"   search_terms={search_terms}")
+    logger.info(f"   page_numbers={page_numbers}")
+    logger.info(f"   PYMUPDF_AVAILABLE={PYMUPDF_AVAILABLE}")
+
     if not PYMUPDF_AVAILABLE:
         logger.warning("PyMuPDF not available - cannot create annotations")
         return []
@@ -130,6 +138,7 @@ def create_pdf_annotations_pymupdf(
 
     try:
         doc = fitz.open(pdf_path)
+        logger.info(f"✅ PDF opened successfully: {len(doc)} pages")
 
         # 検索対象ページの決定
         if page_numbers is None:
@@ -141,13 +150,47 @@ def create_pdf_annotations_pymupdf(
                 page = doc[page_num - 1]
                 page_height = page.rect.height
 
+                # ページテキストを取得（検証用）
+                page_text = page.get_text()
+                logger.info(f"📄 Processing page {page_num}: size={page.rect}, height={page_height}")
+                logger.info(f"   Page text length: {len(page_text)} chars")
+                if len(page_text) > 0:
+                    logger.debug(f"   First 100 chars: {page_text[:100]}")
+                else:
+                    logger.warning(f"   ⚠️ Page {page_num} has NO extractable text (might be scanned)")
+
                 for term in search_terms:
                     # キーワード長フィルタ（2文字以上のみ）
                     if len(term) < 2:
+                        logger.debug(f"   Skipping term '{term}' (too short)")
                         continue
 
+                    logger.info(f"   🔍 Searching for: '{term}' (len={len(term)})")
+
+                    # Unicode正規化（NFC形式）
+                    term_normalized = unicodedata.normalize('NFC', term)
+                    if term_normalized != term:
+                        logger.info(f"      Unicode normalized: '{term}' → '{term_normalized}'")
+
                     # テキスト検索（矩形リストを取得）
-                    rects = page.search_for(term)
+                    rects = page.search_for(term_normalized)
+                    logger.info(f"      → Found {len(rects)} matches for '{term_normalized}' on page {page_num}")
+
+                    # NFC正規化で見つからない場合、NFD形式も試す
+                    if len(rects) == 0:
+                        term_nfd = unicodedata.normalize('NFD', term)
+                        if term_nfd != term_normalized:
+                            logger.info(f"      Trying NFD normalization: '{term_nfd}'")
+                            rects = page.search_for(term_nfd)
+                            logger.info(f"      → NFD search found {len(rects)} matches")
+
+                    # それでも見つからない場合、ページテキスト内に存在するか確認
+                    if len(rects) == 0 and len(page_text) > 0:
+                        if term in page_text or term_normalized in page_text:
+                            logger.warning(f"      ⚠️ Term '{term}' exists in page text but search_for() returned 0 results!")
+                            logger.warning(f"         This might be an encoding issue")
+                        else:
+                            logger.debug(f"      ℹ️ Term '{term}' not found in page text")
 
                     for rect in rects:
                         # PyMuPDF座標（左下原点）→ streamlit-pdf-viewer座標（左上原点）
@@ -161,19 +204,405 @@ def create_pdf_annotations_pymupdf(
                             "border": "solid"
                         })
 
-                logger.debug(f"Found {len([a for a in annotations if a['page'] == page_num])} matches on page {page_num}")
+                page_annotations = len([a for a in annotations if a['page'] == page_num])
+                logger.info(f"   📍 Created {page_annotations} annotations for page {page_num}")
 
             except Exception as e:
-                logger.warning(f"Error processing page {page_num}: {e}")
+                logger.warning(f"Error processing page {page_num}: {e}", exc_info=True)
                 continue
 
         doc.close()
-        logger.info(f"Created {len(annotations)} annotations for {len(search_terms)} search terms")
+        logger.info(f"📊 Summary: Created {len(annotations)} annotations for {len(search_terms)} search terms")
+        if len(annotations) == 0:
+            logger.warning(f"   ⚠️ NO ANNOTATIONS CREATED despite {len(search_terms)} search terms!")
         return annotations
 
     except Exception as e:
         logger.error(f"Error creating annotations: {e}", exc_info=True)
         return []
+
+
+def split_text_into_sentences(text: str) -> List[Dict]:
+    """
+    テキストを文単位に分割し、各文の開始・終了位置を記録
+
+    Args:
+        text: 分割対象のテキスト
+
+    Returns:
+        List[Dict]: 文のリスト
+            [
+                {
+                    "text": "文の内容",
+                    "start": 0,  # 文字オフセット（開始位置）
+                    "end": 10    # 文字オフセット（終了位置）
+                },
+                ...
+            ]
+    """
+    import re
+
+    if not text or not text.strip():
+        return []
+
+    sentences = []
+
+    # 日本語・英語対応の文区切りパターン
+    # 。．.!！?？で区切る
+    pattern = r'([^。．.!！?？]+[。\.!！?？]+)'
+
+    matches = re.finditer(pattern, text)
+
+    for match in matches:
+        sentence_text = match.group(0).strip()
+        if len(sentence_text) > 0:
+            sentences.append({
+                "text": sentence_text,
+                "start": match.start(),
+                "end": match.end()
+            })
+
+    # パターンにマッチしない残りのテキスト（最後の文など）
+    if sentences:
+        last_end = sentences[-1]["end"]
+        if last_end < len(text):
+            remaining = text[last_end:].strip()
+            if len(remaining) > 0:
+                sentences.append({
+                    "text": remaining,
+                    "start": last_end,
+                    "end": len(text)
+                })
+    elif len(text.strip()) > 0:
+        # パターンにマッチしない場合、全体を1文として扱う
+        sentences.append({
+            "text": text.strip(),
+            "start": 0,
+            "end": len(text)
+        })
+
+    logger.debug(f"Split text into {len(sentences)} sentences")
+    return sentences
+
+
+def filter_sentences_by_embedding(
+    sentences: List[Dict],
+    query: str,
+    rag_engine,
+    threshold: float = 0.7,
+    max_candidates: int = 10
+) -> List[Dict]:
+    """
+    エンベディングの類似度で文を絞り込み
+
+    Args:
+        sentences: 候補文のリスト（split_text_into_sentences()の出力）
+        query: ユーザークエリ
+        rag_engine: RAGEngineインスタンス（エンベディング計算用）
+        threshold: 類似度閾値（0-1）
+        max_candidates: 最大候補数
+
+    Returns:
+        List[Dict]: 類似度の高い文のリスト（類似度でソート済み）
+    """
+    import numpy as np
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    if not sentences:
+        return []
+
+    try:
+        # クエリのエンベディングを取得
+        query_embedding = rag_engine.embedding_model.embed_query(query)
+
+        # 各文のエンベディングを計算
+        sentence_embeddings = []
+        for sent in sentences:
+            sent_embedding = rag_engine.embedding_model.embed_query(sent["text"])
+            sentence_embeddings.append(sent_embedding)
+
+        # コサイン類似度を計算
+        similarities = cosine_similarity(
+            [query_embedding],
+            sentence_embeddings
+        )[0]
+
+        # 各文に類似度を追加
+        for i, sent in enumerate(sentences):
+            sent["similarity"] = float(similarities[i])
+
+        # 類似度でフィルタリングとソート
+        filtered = [s for s in sentences if s["similarity"] >= threshold]
+        filtered.sort(key=lambda x: x["similarity"], reverse=True)
+
+        # 上位max_candidates件を返す
+        result = filtered[:max_candidates]
+
+        logger.info(f"🔍 Embedding filter: {len(sentences)} sentences → {len(result)} candidates (threshold={threshold})")
+        for i, sent in enumerate(result[:3]):  # 上位3件をログ出力
+            logger.debug(f"   {i+1}. similarity={sent['similarity']:.3f}: {sent['text'][:50]}...")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in embedding filter: {e}", exc_info=True)
+        return sentences[:max_candidates]  # エラー時は先頭から返す
+
+
+def refine_with_llm(
+    candidate_sentences: List[Dict],
+    query: str,
+    rag_engine,
+    max_sentences: int = 5
+) -> List[Dict]:
+    """
+    LLMで候補文を精査し、最も関連性の高い文を選択
+
+    Args:
+        candidate_sentences: 候補文のリスト（filter_sentences_by_embedding()の出力）
+        query: ユーザークエリ
+        rag_engine: RAGEngineインスタンス（LLM呼び出し用）
+        max_sentences: 最終選択する最大文数
+
+    Returns:
+        List[Dict]: LLMが選択した関連文のリスト
+    """
+    if not candidate_sentences:
+        return []
+
+    try:
+        # 候補文に番号を付ける
+        numbered_candidates = []
+        for i, sent in enumerate(candidate_sentences):
+            numbered_candidates.append(f"{i+1}. {sent['text']}")
+
+        candidates_text = "\n".join(numbered_candidates)
+
+        # LLMプロンプト
+        prompt = f"""以下のユーザークエリに最も関連する文を、候補から最大{max_sentences}個選んでください。
+
+【ユーザークエリ】
+{query}
+
+【候補文】
+{candidates_text}
+
+【指示】
+- 上記の候補から、クエリに直接関連する文の番号のみを選んでください
+- 番号はカンマ区切りで出力してください（例: 1,3,5）
+- 関連する文がない場合は「なし」と出力してください
+- 番号以外の説明は不要です
+
+【出力】
+"""
+
+        # LLMを呼び出し
+        from openai import OpenAI
+        import os
+
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=100
+        )
+
+        llm_response = response.choices[0].message.content.strip()
+        logger.info(f"🤖 LLM refinement response: '{llm_response}'")
+
+        # 応答から番号を抽出
+        if "なし" in llm_response or "None" in llm_response:
+            logger.info(f"   LLM found no relevant sentences")
+            return []
+
+        # 番号を解析（例: "1,3,5" → [1, 3, 5]）
+        import re
+        numbers = re.findall(r'\d+', llm_response)
+        selected_indices = [int(n) - 1 for n in numbers if 0 <= int(n) - 1 < len(candidate_sentences)]
+
+        selected_sentences = [candidate_sentences[i] for i in selected_indices]
+
+        logger.info(f"   Selected {len(selected_sentences)} sentences from {len(candidate_sentences)} candidates")
+        for sent in selected_sentences:
+            logger.debug(f"      - {sent['text'][:50]}...")
+
+        return selected_sentences
+
+    except Exception as e:
+        logger.error(f"Error in LLM refinement: {e}", exc_info=True)
+        # エラー時は類似度上位を返す
+        return candidate_sentences[:max_sentences]
+
+
+def create_pdf_annotations_hybrid(
+    pdf_path: Path,
+    query: str,
+    page_numbers: List[int],
+    rag_engine,
+    config: dict
+) -> List[Dict]:
+    """
+    ハイブリッドアプローチでPDFアノテーションを生成
+
+    Stage 1: エンベディングで候補文を絞り込み（高速）
+    Stage 2: LLMで関連文を精査（高精度）
+    Stage 3: 座標を取得してアノテーション生成
+
+    Args:
+        pdf_path: PDFファイルのパス
+        query: ユーザークエリ
+        page_numbers: 検索対象ページ番号リスト（1始まり）
+        rag_engine: RAGEngineインスタンス
+        config: 設定辞書
+
+    Returns:
+        List[Dict]: streamlit-pdf-viewer用のアノテーション形式
+    """
+    import pdfplumber
+
+    logger.info(f"🎯 create_pdf_annotations_hybrid() called")
+    logger.info(f"   pdf_path={pdf_path}")
+    logger.info(f"   query={query}")
+    logger.info(f"   page_numbers={page_numbers}")
+
+    # 設定を取得
+    hybrid_config = config.get("pdf_highlighting", {}).get("hybrid", {})
+    embedding_threshold = hybrid_config.get("embedding_threshold", 0.7)
+    max_candidates = hybrid_config.get("max_candidates", 10)
+    max_final = hybrid_config.get("max_final", 5)
+    use_llm_refinement = hybrid_config.get("use_llm_refinement", True)
+    fallback_to_keyword = hybrid_config.get("fallback_to_keyword", True)
+
+    annotations = []
+
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page_num in page_numbers:
+                try:
+                    page = pdf.pages[page_num - 1]
+                    page_text = page.extract_text()
+
+                    if not page_text:
+                        logger.warning(f"   Page {page_num} has no extractable text")
+                        continue
+
+                    logger.info(f"📄 Processing page {page_num} ({len(page_text)} chars)")
+
+                    # Stage 1: 文分割
+                    sentences = split_text_into_sentences(page_text)
+                    logger.info(f"   Stage 1: Split into {len(sentences)} sentences")
+
+                    if not sentences:
+                        continue
+
+                    # Stage 2: エンベディングでフィルタリング
+                    candidates = filter_sentences_by_embedding(
+                        sentences,
+                        query,
+                        rag_engine,
+                        threshold=embedding_threshold,
+                        max_candidates=max_candidates
+                    )
+
+                    if not candidates:
+                        logger.info(f"   Stage 2: No candidates above threshold={embedding_threshold}")
+                        continue
+
+                    # Stage 3: LLMで精査（オプション）
+                    if use_llm_refinement and len(candidates) > 0:
+                        selected_sentences = refine_with_llm(
+                            candidates,
+                            query,
+                            rag_engine,
+                            max_sentences=max_final
+                        )
+                    else:
+                        selected_sentences = candidates[:max_final]
+
+                    if not selected_sentences:
+                        logger.info(f"   Stage 3: No sentences selected by LLM")
+                        continue
+
+                    # Stage 4: 座標を取得してアノテーション生成
+                    page_height = page.height
+                    for sent in selected_sentences:
+                        # 文のテキストから座標を検索
+                        words = page.extract_words()
+                        positions = find_text_positions_in_words(
+                            sent["text"],
+                            words,
+                            page_num
+                        )
+
+                        # アノテーションに変換
+                        for pos in positions:
+                            annotations.append({
+                                "page": page_num,
+                                "x": float(pos["x0"]),
+                                "y": float(pos["y0"]),
+                                "width": float(pos["x1"] - pos["x0"]),
+                                "height": float(pos["y1"] - pos["y0"]),
+                                "color": "yellow",
+                                "border": "solid"
+                            })
+
+                    logger.info(f"   📍 Created {len(annotations)} annotations for page {page_num}")
+
+                except Exception as e:
+                    logger.error(f"Error processing page {page_num}: {e}", exc_info=True)
+                    continue
+
+        logger.info(f"📊 Hybrid annotation summary: {len(annotations)} annotations created")
+        return annotations
+
+    except Exception as e:
+        logger.error(f"Error in hybrid annotation generation: {e}", exc_info=True)
+
+        # フォールバック: キーワード方式
+        if fallback_to_keyword:
+            logger.warning(f"   Falling back to keyword-based highlighting")
+            from src.pdf_page_renderer import extract_keywords_llm
+            keywords = extract_keywords_llm(query, rag_engine)
+            return create_pdf_annotations_pymupdf(pdf_path, keywords, page_numbers)
+        else:
+            return []
+
+
+def find_text_positions_in_words(
+    search_text: str,
+    words: List[Dict],
+    page_number: int
+) -> List[Dict]:
+    """
+    単語リストから検索テキストの座標を取得
+
+    Args:
+        search_text: 検索するテキスト
+        words: pdfplumberのextract_words()の出力
+        page_number: ページ番号
+
+    Returns:
+        List[Dict]: 座標のリスト
+    """
+    positions = []
+    search_text_lower = search_text.lower()
+
+    # 単語をテキスト順に結合して検索
+    for i, word in enumerate(words):
+        word_text = word['text'].lower()
+
+        # 部分一致で検索
+        if search_text_lower in word_text or word_text in search_text_lower:
+            positions.append({
+                "text": word['text'],
+                "x0": word['x0'],
+                "y0": word['top'],
+                "x1": word['x1'],
+                "y1": word['bottom'],
+            })
+
+    return positions
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

@@ -15,7 +15,11 @@ from src.vision_analyzer import VisionAnalyzer
 from src.vector_store import VectorStore
 from src.rag_engine import RAGEngine
 from src.pdf_manager import PDFManager
-from src.pdf_page_renderer import extract_page_as_image, extract_multiple_pages, extract_page_with_highlight, PDF2IMAGE_AVAILABLE, get_pdf_path, create_pdf_annotations_pymupdf
+from src.pdf_page_renderer import (
+    extract_page_as_image, extract_multiple_pages, extract_page_with_highlight,
+    PDF2IMAGE_AVAILABLE, get_pdf_path, create_pdf_annotations_pymupdf,
+    create_pdf_annotations_hybrid
+)
 
 # ロガー設定（インポート前に定義）
 logger = logging.getLogger(__name__)
@@ -756,11 +760,25 @@ def main_area():
 
                                                     with cols[col_idx]:
                                                         # 該当ページのアノテーションのみ生成
-                                                        annotations = create_pdf_annotations_pymupdf(
-                                                            pdf_path=pdf_path,
-                                                            search_terms=keywords,
-                                                            page_numbers=[page_num]  # 1ページのみ
-                                                        )
+                                                        # ハイライト方式を設定から取得
+                                                        highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
+
+                                                        if highlight_method == "hybrid":
+                                                            # ハイブリッド方式（エンベディング + LLM）
+                                                            annotations = create_pdf_annotations_hybrid(
+                                                                pdf_path=pdf_path,
+                                                                query=user_query,
+                                                                page_numbers=[page_num],
+                                                                rag_engine=st.session_state.rag_engine,
+                                                                config=st.session_state.config
+                                                            )
+                                                        else:
+                                                            # キーワード方式（フォールバック）
+                                                            annotations = create_pdf_annotations_pymupdf(
+                                                                pdf_path=pdf_path,
+                                                                search_terms=keywords,
+                                                                page_numbers=[page_num]  # 1ページのみ
+                                                            )
 
                                                         # キャプション作成
                                                         caption = f"ページ {page_num}"
@@ -1024,11 +1042,25 @@ def main_area():
 
                                                         with cols[col_idx]:
                                                             # 該当ページのアノテーションのみ生成
-                                                            annotations = create_pdf_annotations_pymupdf(
-                                                                pdf_path=pdf_path,
-                                                                search_terms=keywords,
-                                                                page_numbers=[page_num]  # 1ページのみ
-                                                            )
+                                                            # ハイライト方式を設定から取得
+                                                            highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
+
+                                                            if highlight_method == "hybrid":
+                                                                # ハイブリッド方式（エンベディング + LLM）
+                                                                annotations = create_pdf_annotations_hybrid(
+                                                                    pdf_path=pdf_path,
+                                                                    query=question,
+                                                                    page_numbers=[page_num],
+                                                                    rag_engine=st.session_state.rag_engine,
+                                                                    config=st.session_state.config
+                                                                )
+                                                            else:
+                                                                # キーワード方式（フォールバック）
+                                                                annotations = create_pdf_annotations_pymupdf(
+                                                                    pdf_path=pdf_path,
+                                                                    search_terms=keywords,
+                                                                    page_numbers=[page_num]  # 1ページのみ
+                                                                )
 
                                                             # キャプション作成
                                                             caption = f"ページ {page_num}"
