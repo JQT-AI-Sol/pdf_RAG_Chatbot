@@ -19,6 +19,12 @@ pgvector>=0.2.0
 pdfplumber>=0.10.3
 pdf2image>=1.16.0  # For PDF page to image conversion
 
+# Word Processing
+python-docx>=1.0.0  # For .docx and .doc files
+
+# Excel Processing
+openpyxl>=3.1.0  # For .xlsx and .xls files
+
 # Image Processing
 Pillow>=10.2.0
 
