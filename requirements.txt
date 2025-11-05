@@ -4,6 +4,7 @@ streamlit>=1.32.0
 # LangChain & OpenAI (updated 2025-10-21)
 langchain>=0.1.0
 langchain-openai>=0.0.5
+langchain-text-splitters>=0.0.1
 openai>=1.12.0
 
 # Gemini (Google AI Studio SDK - API Key方式)
