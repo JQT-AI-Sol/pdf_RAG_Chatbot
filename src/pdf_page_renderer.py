@@ -14,6 +14,15 @@ import pdfplumber
 
 logger = logging.getLogger(__name__)
 
+# PyMuPDF (fitz) のインポート - ハイライト座標の高速検索用
+PYMUPDF_AVAILABLE = False
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+    logger.info("✅ PyMuPDF is available - Fast PDF text search enabled")
+except ImportError:
+    logger.warning("❌ PyMuPDF not available - Using pdfplumber fallback")
+
 # pdf2imageの動作確認（popplerが必要）
 PDF2IMAGE_AVAILABLE = False
 try:
@@ -83,6 +92,88 @@ def get_pdf_path(source_file: str, vector_store) -> Optional[Path]:
 
     logger.error(f"PDF not found: {source_file}")
     return None
+
+
+def create_pdf_annotations_pymupdf(
+    pdf_path: Path,
+    search_terms: List[str],
+    page_numbers: Optional[List[int]] = None
+) -> List[Dict]:
+    """
+    PyMuPDFを使用してPDF内のキーワードを検索し、streamlit-pdf-viewer用のアノテーションを生成
+
+    Args:
+        pdf_path: PDFファイルのパス
+        search_terms: 検索キーワードのリスト
+        page_numbers: 検索対象のページ番号リスト（1始まり）。Noneの場合は全ページ
+
+    Returns:
+        List[Dict]: streamlit-pdf-viewer用のアノテーション形式
+            [
+                {
+                    "page": 1,
+                    "x": 220,
+                    "y": 155,
+                    "width": 65,
+                    "height": 22,
+                    "color": "yellow",
+                    "border": "solid"
+                },
+                ...
+            ]
+    """
+    if not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF not available - cannot create annotations")
+        return []
+
+    annotations = []
+
+    try:
+        doc = fitz.open(pdf_path)
+
+        # 検索対象ページの決定
+        if page_numbers is None:
+            page_numbers = list(range(1, len(doc) + 1))
+
+        for page_num in page_numbers:
+            try:
+                # ページ番号は1始まりだが、PyMuPDFは0始まり
+                page = doc[page_num - 1]
+                page_height = page.rect.height
+
+                for term in search_terms:
+                    # キーワード長フィルタ（2文字以上のみ）
+                    if len(term) < 2:
+                        continue
+
+                    # テキスト検索（矩形リストを取得）
+                    rects = page.search_for(term)
+
+                    for rect in rects:
+                        # PyMuPDF座標（左下原点）→ streamlit-pdf-viewer座標（左上原点）
+                        annotations.append({
+                            "page": page_num,
+                            "x": float(rect.x0),
+                            "y": float(page_height - rect.y1),  # Y座標を反転
+                            "width": float(rect.x1 - rect.x0),
+                            "height": float(rect.y1 - rect.y0),
+                            "color": "yellow",
+                            "border": "solid"
+                        })
+
+                logger.debug(f"Found {len([a for a in annotations if a['page'] == page_num])} matches on page {page_num}")
+
+            except Exception as e:
+                logger.warning(f"Error processing page {page_num}: {e}")
+                continue
+
+        doc.close()
+        logger.info(f"Created {len(annotations)} annotations for {len(search_terms)} search terms")
+        return annotations
+
+    except Exception as e:
+        logger.error(f"Error creating annotations: {e}", exc_info=True)
+        return []
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -406,53 +497,24 @@ def find_text_positions(
             # ページ内の全テキストを単語単位で取得
             words = page.extract_words()
 
-            # OCRフォールバック: pdfplumberで抽出できない場合
-            if len(words) == 0 and vision_analyzer and PDF2IMAGE_AVAILABLE:
-                logger.warning(f"⚠️ PDF page {page_number} has no extractable text - attempting OCR")
+            # スキャンPDF（テキスト抽出不可）の場合は空リストを返す
+            if len(words) == 0:
+                logger.warning(f"⚠️ PDF page {page_number} has no extractable text (scanned PDF) - no highlights will be shown")
+                return []
 
-                try:
-                    # PDFページを画像化
-                    images = convert_from_path(
-                        str(pdf_path),
-                        dpi=dpi,
-                        first_page=page_number,
-                        last_page=page_number,
-                        fmt='png'
-                    )
-
-                    if images and len(images) > 0:
-                        # 一時ファイルとして保存
-                        import tempfile
-                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-                            tmp_path = tmp_file.name
-                            images[0].save(tmp_path, 'PNG')
-
-                        try:
-                            # Vision API OCR実行
-                            logger.info(f"🔍 Running OCR on page {page_number} using Vision API...")
-                            ocr_result = vision_analyzer.ocr_page(tmp_path)
-                            words = ocr_result.get("words", [])
-                            logger.info(f"✅ OCR extracted {len(words)} words from page {page_number}")
-                        finally:
-                            # 一時ファイル削除
-                            import os
-                            if os.path.exists(tmp_path):
-                                os.remove(tmp_path)
-                    else:
-                        logger.error(f"❌ Failed to convert PDF page {page_number} to image for OCR")
-                except Exception as ocr_error:
-                    logger.error(f"❌ OCR fallback failed: {ocr_error}", exc_info=True)
-                    # OCR失敗時は空のwordsのまま続行
-
-            # 各検索語に対してマッチングを実行
+            # 各検索語に対してマッチングを実行（改善版：単方向部分一致 + 長さフィルタ）
             for search_term in search_terms:
                 search_term_lower = search_term.lower()
+
+                # キーワード長フィルタ（2文字以上のみマッチング）
+                if len(search_term_lower) < 2:
+                    continue
 
                 for word in words:
                     word_text = word['text'].lower()
 
-                    # 部分一致でマッチング
-                    if search_term_lower in word_text or word_text in search_term_lower:
+                    # 単方向部分一致（キーワードが単語に含まれる場合のみ）
+                    if search_term_lower in word_text:
                         positions.append({
                             "text": word['text'],
                             "x0": word['x0'],

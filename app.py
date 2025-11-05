@@ -15,7 +15,16 @@ from src.vision_analyzer import VisionAnalyzer
 from src.vector_store import VectorStore
 from src.rag_engine import RAGEngine
 from src.pdf_manager import PDFManager
-from src.pdf_page_renderer import extract_page_as_image, extract_multiple_pages, extract_page_with_highlight, PDF2IMAGE_AVAILABLE
+from src.pdf_page_renderer import extract_page_as_image, extract_multiple_pages, extract_page_with_highlight, PDF2IMAGE_AVAILABLE, get_pdf_path, create_pdf_annotations_pymupdf
+
+# streamlit-pdf-viewer のインポート
+try:
+    from streamlit_pdf_viewer import pdf_viewer
+    STREAMLIT_PDF_VIEWER_AVAILABLE = True
+    logger.info("✅ streamlit-pdf-viewer is available")
+except ImportError:
+    STREAMLIT_PDF_VIEWER_AVAILABLE = False
+    logger.warning("❌ streamlit-pdf-viewer not available - using fallback image display")
 
 # ロガー設定
 logger = logging.getLogger(__name__)
@@ -722,42 +731,100 @@ def main_area():
                                     pages_by_pdf[source_file] = []
                                 pages_by_pdf[source_file].append(page_info)
 
-                            # PDFファイルごとにページ画像を表示
+                            # PDFファイルごとに1ページずつ表示
                             for source_file, pages in pages_by_pdf.items():
                                 st.markdown(f"**📄 {source_file}**")
 
-                                # 最大3列でページを表示
-                                cols_per_row = min(3, len(pages))
-                                for i in range(0, len(pages), cols_per_row):
-                                    cols = st.columns(cols_per_row)
-                                    for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
-                                        page_num = page_info['page_number']
-                                        score = page_info.get('score')
+                                if STREAMLIT_PDF_VIEWER_AVAILABLE:
+                                    # pdf_viewerを使用して各ページを個別に表示
+                                    try:
+                                        # PDFパスを取得
+                                        pdf_path = get_pdf_path(source_file, st.session_state.vector_store)
 
-                                        with cols[col_idx]:
-                                            # ハイライト付き画像を取得
-                                            logger.info(f"📸 [HISTORY] About to call extract_page_with_highlight: {source_file} page {page_num}")
-                                            image = extract_page_with_highlight(
-                                                source_file=source_file,
-                                                page_number=page_num,
-                                                query=user_query,
-                                                _vector_store=st.session_state.vector_store,
-                                                _rag_engine=st.session_state.rag_engine,
-                                                _vision_analyzer=st.session_state.vision_analyzer,
-                                                dpi=150,
-                                                target_width=1000
-                                            )
-                                            logger.info(f"📸 [HISTORY] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
+                                        if pdf_path and pdf_path.exists():
+                                            # キーワード抽出（LLM使用）
+                                            from src.pdf_page_renderer import extract_keywords_llm
+                                            keywords = extract_keywords_llm(user_query, st.session_state.rag_engine)
 
-                                            if image:
-                                                # キャプション作成
-                                                caption = f"ページ {page_num}"
-                                                if score is not None:
-                                                    caption += f" (関連度: {score:.3f})"
+                                            # 最大3列でページを表示（グリッドレイアウト維持）
+                                            cols_per_row = min(3, len(pages))
+                                            for i in range(0, len(pages), cols_per_row):
+                                                cols = st.columns(cols_per_row)
+                                                for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
+                                                    page_num = page_info['page_number']
+                                                    score = page_info.get('score')
 
-                                                st.image(image, caption=caption, use_container_width=True)
+                                                    with cols[col_idx]:
+                                                        # 該当ページのアノテーションのみ生成
+                                                        annotations = create_pdf_annotations_pymupdf(
+                                                            pdf_path=pdf_path,
+                                                            search_terms=keywords,
+                                                            page_numbers=[page_num]  # 1ページのみ
+                                                        )
 
-                                                # 内容プレビュー
+                                                        # キャプション作成
+                                                        caption = f"ページ {page_num}"
+                                                        if score is not None:
+                                                            caption += f" (関連度: {score:.3f})"
+                                                        st.markdown(f"**{caption}**")
+
+                                                        # PDFビューアーで1ページのみ表示
+                                                        logger.info(f"📄 [HISTORY] Displaying page {page_num} with {len(annotations)} annotations")
+                                                        pdf_viewer(
+                                                            str(pdf_path),
+                                                            annotations=annotations,
+                                                            pages_to_render=[page_num],  # 該当ページのみ
+                                                            width=350,
+                                                            height=500,
+                                                            render_text=True
+                                                        )
+
+                                                        # 内容プレビュー
+                                                        with st.expander("📝 内容プレビュー"):
+                                                            st.text(page_info.get('content_preview', ''))
+                                        else:
+                                            st.error(f"PDFファイルが見つかりません: {source_file}")
+
+                                    except Exception as e:
+                                        logger.error(f"PDF display error: {e}", exc_info=True)
+                                        st.error(f"PDFの表示に失敗しました: {e}")
+
+                                else:
+                                    # フォールバック: 画像ベースの表示
+                                    st.warning("streamlit-pdf-viewerが利用できません。画像表示にフォールバックします。")
+
+                                    # 最大3列でページを表示
+                                    cols_per_row = min(3, len(pages))
+                                    for i in range(0, len(pages), cols_per_row):
+                                        cols = st.columns(cols_per_row)
+                                        for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
+                                            page_num = page_info['page_number']
+                                            score = page_info.get('score')
+
+                                            with cols[col_idx]:
+                                                # ハイライト付き画像を取得
+                                                logger.info(f"📸 [HISTORY] About to call extract_page_with_highlight: {source_file} page {page_num}")
+                                                image = extract_page_with_highlight(
+                                                    source_file=source_file,
+                                                    page_number=page_num,
+                                                    query=user_query,
+                                                    _vector_store=st.session_state.vector_store,
+                                                    _rag_engine=st.session_state.rag_engine,
+                                                    _vision_analyzer=st.session_state.vision_analyzer,
+                                                    dpi=150,
+                                                    target_width=1000
+                                                )
+                                                logger.info(f"📸 [HISTORY] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
+
+                                                if image:
+                                                    # キャプション作成
+                                                    caption = f"ページ {page_num}"
+                                                    if score is not None:
+                                                        caption += f" (関連度: {score:.3f})"
+
+                                                    st.image(image, caption=caption, use_container_width=True)
+
+                                                    # 内容プレビュー
                                                 with st.expander("📝 内容プレビュー"):
                                                     st.text(page_info.get('content_preview', ''))
                                             else:
@@ -932,46 +999,104 @@ def main_area():
                                         pages_by_pdf[source_file] = []
                                     pages_by_pdf[source_file].append(page_info)
 
-                                # PDFファイルごとにページ画像を表示
+                                # PDFファイルごとに1ページずつ表示
                                 for source_file, pages in pages_by_pdf.items():
                                     st.markdown(f"**📄 {source_file}**")
 
-                                    # 最大3列でページを表示
-                                    cols_per_row = min(3, len(pages))
-                                    for i in range(0, len(pages), cols_per_row):
-                                        cols = st.columns(cols_per_row)
-                                        for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
-                                            page_num = page_info['page_number']
-                                            score = page_info.get('score')
+                                    if STREAMLIT_PDF_VIEWER_AVAILABLE:
+                                        # pdf_viewerを使用して各ページを個別に表示
+                                        try:
+                                            # PDFパスを取得
+                                            pdf_path = get_pdf_path(source_file, st.session_state.vector_store)
 
-                                            with cols[col_idx]:
-                                                # ハイライト付き画像を取得
-                                                logger.info(f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}")
-                                                image = extract_page_with_highlight(
-                                                    source_file=source_file,
-                                                    page_number=page_num,
-                                                    query=question,  # 検索クエリをハイライト
-                                                    _vector_store=st.session_state.vector_store,
-                                                    _rag_engine=st.session_state.rag_engine,
-                                                    _vision_analyzer=st.session_state.vision_analyzer,
-                                                    dpi=150,
-                                                    target_width=1000
-                                                )
-                                                logger.info(f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
+                                            if pdf_path and pdf_path.exists():
+                                                # キーワード抽出（LLM使用）
+                                                from src.pdf_page_renderer import extract_keywords_llm
+                                                keywords = extract_keywords_llm(question, st.session_state.rag_engine)
 
-                                                if image:
-                                                    # キャプション作成
-                                                    caption = f"ページ {page_num}"
-                                                    if score is not None:
-                                                        caption += f" (関連度: {score:.3f})"
+                                                # 最大3列でページを表示（グリッドレイアウト維持）
+                                                cols_per_row = min(3, len(pages))
+                                                for i in range(0, len(pages), cols_per_row):
+                                                    cols = st.columns(cols_per_row)
+                                                    for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
+                                                        page_num = page_info['page_number']
+                                                        score = page_info.get('score')
 
-                                                    st.image(image, caption=caption, use_container_width=True)
+                                                        with cols[col_idx]:
+                                                            # 該当ページのアノテーションのみ生成
+                                                            annotations = create_pdf_annotations_pymupdf(
+                                                                pdf_path=pdf_path,
+                                                                search_terms=keywords,
+                                                                page_numbers=[page_num]  # 1ページのみ
+                                                            )
 
-                                                    # 内容プレビュー
-                                                    with st.expander("📝 内容プレビュー"):
-                                                        st.text(page_info.get('content_preview', ''))
-                                                else:
-                                                    st.warning(f"ページ {page_num} の画像を取得できませんでした")
+                                                            # キャプション作成
+                                                            caption = f"ページ {page_num}"
+                                                            if score is not None:
+                                                                caption += f" (関連度: {score:.3f})"
+                                                            st.markdown(f"**{caption}**")
+
+                                                            # PDFビューアーで1ページのみ表示
+                                                            logger.info(f"📄 [NEW ANSWER] Displaying page {page_num} with {len(annotations)} annotations")
+                                                            pdf_viewer(
+                                                                str(pdf_path),
+                                                                annotations=annotations,
+                                                                pages_to_render=[page_num],  # 該当ページのみ
+                                                                width=350,
+                                                                height=500,
+                                                                render_text=True
+                                                            )
+
+                                                            # 内容プレビュー
+                                                            with st.expander("📝 内容プレビュー"):
+                                                                st.text(page_info.get('content_preview', ''))
+                                            else:
+                                                st.error(f"PDFファイルが見つかりません: {source_file}")
+
+                                        except Exception as e:
+                                            logger.error(f"PDF display error: {e}", exc_info=True)
+                                            st.error(f"PDFの表示に失敗しました: {e}")
+
+                                    else:
+                                        # フォールバック: 画像ベースの表示
+                                        st.warning("streamlit-pdf-viewerが利用できません。画像表示にフォールバックします。")
+
+                                        # 最大3列でページを表示
+                                        cols_per_row = min(3, len(pages))
+                                        for i in range(0, len(pages), cols_per_row):
+                                            cols = st.columns(cols_per_row)
+                                            for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
+                                                page_num = page_info['page_number']
+                                                score = page_info.get('score')
+
+                                                with cols[col_idx]:
+                                                    # ハイライト付き画像を取得
+                                                    logger.info(f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}")
+                                                    image = extract_page_with_highlight(
+                                                        source_file=source_file,
+                                                        page_number=page_num,
+                                                        query=question,  # 検索クエリをハイライト
+                                                        _vector_store=st.session_state.vector_store,
+                                                        _rag_engine=st.session_state.rag_engine,
+                                                        _vision_analyzer=st.session_state.vision_analyzer,
+                                                        dpi=150,
+                                                        target_width=1000
+                                                    )
+                                                    logger.info(f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
+
+                                                    if image:
+                                                        # キャプション作成
+                                                        caption = f"ページ {page_num}"
+                                                        if score is not None:
+                                                            caption += f" (関連度: {score:.3f})"
+
+                                                        st.image(image, caption=caption, use_container_width=True)
+
+                                                        # 内容プレビュー
+                                                        with st.expander("📝 内容プレビュー"):
+                                                            st.text(page_info.get('content_preview', ''))
+                                                    else:
+                                                        st.warning(f"ページ {page_num} の画像を取得できませんでした")
 
                                     st.markdown("---")
 
