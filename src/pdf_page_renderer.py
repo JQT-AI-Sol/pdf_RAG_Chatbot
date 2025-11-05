@@ -548,7 +548,7 @@ def extract_page_with_highlight(
     _rag_engine=None,
     _vision_analyzer=None,
     use_llm_keywords: bool = True,
-    _cache_version: int = 3,  # v3: Force cache invalidation + debug logs
+    _cache_version: int = 4,  # v4: OCR fallback implementation
     dpi: int = DEFAULT_DPI,
     target_width: int = DEFAULT_WIDTH
 ) -> Optional[Image.Image]:
