@@ -17,6 +17,9 @@ from src.rag_engine import RAGEngine
 from src.pdf_manager import PDFManager
 from src.pdf_page_renderer import extract_page_as_image, extract_multiple_pages, extract_page_with_highlight, PDF2IMAGE_AVAILABLE, get_pdf_path, create_pdf_annotations_pymupdf
 
+# ロガー設定（インポート前に定義）
+logger = logging.getLogger(__name__)
+
 # streamlit-pdf-viewer のインポート
 try:
     from streamlit_pdf_viewer import pdf_viewer
@@ -25,9 +28,6 @@ try:
 except ImportError:
     STREAMLIT_PDF_VIEWER_AVAILABLE = False
     logger.warning("❌ streamlit-pdf-viewer not available - using fallback image display")
-
-# ロガー設定
-logger = logging.getLogger(__name__)
 
 # ページ設定
 st.set_page_config(
