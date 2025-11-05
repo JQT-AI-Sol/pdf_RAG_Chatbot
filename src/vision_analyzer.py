@@ -402,13 +402,18 @@ class VisionAnalyzer:
             import re
             import json
 
-            # ```json ... ``` ブロックを探す
-            json_match = re.search(r'```json\s*\n(.*?)\n```', description, re.DOTALL)
+            # ```json ... ``` ブロックを探す（より柔軟な正規表現）
+            json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', description, re.DOTALL | re.IGNORECASE)
             if json_match:
-                json_str = json_match.group(1)
+                json_str = json_match.group(1).strip()
             else:
                 # JSONブロックなしの場合、全体をJSONとしてパース試行
                 json_str = description.strip()
+
+            # 空文字列チェック
+            if not json_str:
+                logger.error("❌ OCR response is empty after extraction")
+                return {"words": [], "full_text": "", "cached": False}
 
             ocr_data = json.loads(json_str)
 
