@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # src モジュールのインポート
 from src.utils import load_config, load_environment, ensure_directories, setup_logging, encode_pdf_to_base64
-from src.pdf_processor import PDFProcessor
+from src.document_processor import DocumentProcessor
 from src.text_embedder import TextEmbedder
 from src.vision_analyzer import VisionAnalyzer
 from src.vector_store import VectorStore
@@ -44,7 +44,7 @@ def initialize_app():
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
         st.session_state.config = config
-        st.session_state.pdf_processor = PDFProcessor(config)
+        st.session_state.document_processor = DocumentProcessor(config)
         st.session_state.embedder = TextEmbedder(config)
         st.session_state.vision_analyzer = VisionAnalyzer(config)
         st.session_state.vector_store = VectorStore(config)
@@ -95,12 +95,13 @@ def sidebar():
             "自動的に有効になります（packages.txt対応済み）"
         )
 
-    # PDFアップロード
-    st.sidebar.subheader("PDFアップロード")
+    # ドキュメントアップロード
+    st.sidebar.subheader("📄 ドキュメントアップロード")
     uploaded_files = st.sidebar.file_uploader(
-        "PDFファイルを選択",
-        type=['pdf'],
-        accept_multiple_files=True
+        "ファイルを選択 (PDF, Word, Excel)",
+        type=['pdf', 'docx', 'doc', 'xlsx', 'xls'],
+        accept_multiple_files=True,
+        help="対応形式: PDF (.pdf), Word (.docx, .doc), Excel (.xlsx, .xls)"
     )
 
     # カテゴリー入力
@@ -112,9 +113,9 @@ def sidebar():
     # インデックス作成ボタン
     if st.sidebar.button("📑 インデックス作成", type="primary"):
         if uploaded_files and category:
-            process_pdfs(uploaded_files, category)
+            process_documents(uploaded_files, category)
         else:
-            st.sidebar.error("PDFファイルとカテゴリー名を入力してください")
+            st.sidebar.error("ドキュメントファイルとカテゴリー名を入力してください")
 
     # 登録済みカテゴリー表示
     st.sidebar.subheader("📂 登録済みカテゴリー")
@@ -204,8 +205,8 @@ def sidebar():
         st.rerun()
 
 
-def process_pdfs(uploaded_files, category):
-    """PDFファイルを処理"""
+def process_documents(uploaded_files, category):
+    """ドキュメントファイル（PDF、Word、Excel）を処理"""
     # カテゴリーはSupabaseのregistered_pdfsテーブルに自動保存されるため、
     # ローカルファイルへの保存は不要
 
@@ -223,47 +224,48 @@ def process_pdfs(uploaded_files, category):
                 st.sidebar.error(f"{uploaded_file.name}: ファイルサイズが上限（{max_size_mb}MB）を超えています（{file_size_mb:.1f}MB）")
                 continue
 
-            # 1. PDFを保存（data/uploaded_pdfs/ と static/pdfs/ の両方）
-            status_text.text(f"処理中: {uploaded_file.name} (1/?) - PDF保存中...")
-            pdf_path = Path("data/uploaded_pdfs") / uploaded_file.name
-            pdf_path.parent.mkdir(parents=True, exist_ok=True)
-            static_pdf_path = Path("static/pdfs") / uploaded_file.name
-            static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            # 1. ドキュメントを保存（data/uploaded_pdfs/ と static/pdfs/ の両方）
+            # 注: ディレクトリ名はPDF時代の名残だが、全ドキュメント形式で使用
+            status_text.text(f"処理中: {uploaded_file.name} (1/?) - ファイル保存中...")
+            doc_path = Path("data/uploaded_pdfs") / uploaded_file.name
+            doc_path.parent.mkdir(parents=True, exist_ok=True)
+            static_doc_path = Path("static/pdfs") / uploaded_file.name
+            static_doc_path.parent.mkdir(parents=True, exist_ok=True)
 
-            pdf_bytes = uploaded_file.getbuffer()
-            with open(pdf_path, "wb") as f:
-                f.write(pdf_bytes)
-            with open(static_pdf_path, "wb") as f:
-                f.write(pdf_bytes)
+            doc_bytes = uploaded_file.getbuffer()
+            with open(doc_path, "wb") as f:
+                f.write(doc_bytes)
+            with open(static_doc_path, "wb") as f:
+                f.write(doc_bytes)
 
             # 2. テキスト・画像抽出
             status_text.text(f"処理中: {uploaded_file.name} (2/?) - テキスト・画像抽出中...")
             try:
-                logging.info(f"Starting PDF processing for {uploaded_file.name}")
-                pdf_result = st.session_state.pdf_processor.process_pdf(str(pdf_path), category)
-                logging.info(f"PDF processing completed for {uploaded_file.name}: {len(pdf_result.get('text_chunks', []))} text chunks, {len(pdf_result.get('images', []))} images")
+                logging.info(f"Starting document processing for {uploaded_file.name}")
+                doc_result = st.session_state.document_processor.process_document(str(doc_path), category)
+                logging.info(f"Document processing completed for {uploaded_file.name}: {len(doc_result.get('text_chunks', []))} text chunks, {len(doc_result.get('images', []))} images")
             except Exception as e:
-                error_msg = f"PDF処理中にエラーが発生しました: {str(e)}"
+                error_msg = f"ドキュメント処理中にエラーが発生しました: {str(e)}"
                 logging.error(error_msg, exc_info=True)
                 st.sidebar.error(error_msg)
                 continue
 
             # 総ステップ数を決定（画像があれば5、なければ4）
-            total_steps = 5 if pdf_result['images'] else 4
-            num_pages = pdf_result.get('total_pages', '?')
-            num_chunks = len(pdf_result['text_chunks'])
-            num_images = len(pdf_result['images'])
+            total_steps = 5 if doc_result['images'] else 4
+            num_pages = doc_result.get('total_pages', '?')
+            num_chunks = len(doc_result['text_chunks'])
+            num_images = len(doc_result['images'])
 
             # 3. テキストチャンクをエンベディング（バッチ処理）
             status_text.text(f"処理中: {uploaded_file.name} (3/{total_steps}) - テキストエンベディング中（{num_chunks}チャンク）...")
-            if pdf_result['text_chunks']:
+            if doc_result['text_chunks']:
                 # 全テキストをまとめてバッチ処理
-                texts = [chunk['text'] for chunk in pdf_result['text_chunks']]
+                texts = [chunk['text'] for chunk in doc_result['text_chunks']]
                 text_embeddings = st.session_state.embedder.embed_batch(texts)
 
                 # ベクトルストアに追加
                 st.session_state.vector_store.add_text_chunks(
-                    pdf_result['text_chunks'],
+                    doc_result['text_chunks'],
                     text_embeddings
                 )
 
@@ -271,7 +273,7 @@ def process_pdfs(uploaded_files, category):
             analyzed_images = []
             failed_images = []
 
-            if pdf_result['images']:
+            if doc_result['images']:
                 status_text.text(f"処理中: {uploaded_file.name} (4/{total_steps}) - 画像解析中（{num_images}枚）...")
                 max_workers = st.session_state.config.get('performance', {}).get('max_workers', 4)
 
@@ -312,7 +314,7 @@ def process_pdfs(uploaded_files, category):
 
                 # ThreadPoolExecutorで並列処理
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(analyze_single_image, img, vision_analyzer): img for img in pdf_result['images']}
+                    futures = {executor.submit(analyze_single_image, img, vision_analyzer): img for img in doc_result['images']}
                     for future in as_completed(futures):
                         result = future.result()
                         if result['success']:
@@ -378,9 +380,9 @@ def process_pdfs(uploaded_files, category):
             if st.session_state.vector_store.provider == 'supabase':
                 try:
                     storage_path = st.session_state.vector_store.upload_pdf_to_storage(
-                        str(pdf_path), uploaded_file.name, category
+                        str(doc_path), uploaded_file.name, category
                     )
-                    logging.info(f"PDF uploaded to Supabase Storage: {storage_path}")
+                    logging.info(f"Document uploaded to Supabase Storage: {storage_path}")
                 except Exception as e:
                     logging.warning(f"Failed to upload PDF to Supabase Storage: {e}")
                     # ストレージアップロード失敗してもローカルファイルはあるので処理継続
@@ -389,8 +391,8 @@ def process_pdfs(uploaded_files, category):
             st.session_state.vector_store.register_pdf(uploaded_file.name, category, storage_path)
 
             # 完了メッセージの作成
-            completion_msg = f"✅ {uploaded_file.name}: テキスト {len(pdf_result['text_chunks'])}件"
-            if pdf_result['images']:
+            completion_msg = f"✅ {uploaded_file.name}: テキスト {len(doc_result['text_chunks'])}件"
+            if doc_result['images']:
                 if analyzed_images:
                     completion_msg += f", 画像 {len(analyzed_images)}/{num_images}件"
                 else:
@@ -732,6 +734,7 @@ def main_area():
 
                                         with cols[col_idx]:
                                             # ハイライト付き画像を取得
+                                            logger.info(f"📸 [HISTORY] About to call extract_page_with_highlight: {source_file} page {page_num}")
                                             image = extract_page_with_highlight(
                                                 source_file=source_file,
                                                 page_number=page_num,
@@ -741,6 +744,7 @@ def main_area():
                                                 dpi=150,
                                                 target_width=1000
                                             )
+                                            logger.info(f"📸 [HISTORY] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
 
                                             if image:
                                                 # キャプション作成
@@ -929,6 +933,7 @@ def main_area():
 
                                                 with cols[col_idx]:
                                                     # ハイライト付き画像を取得
+                                                    logger.info(f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}")
                                                     image = extract_page_with_highlight(
                                                         source_file=source_file,
                                                         page_number=page_num,
@@ -938,6 +943,7 @@ def main_area():
                                                         dpi=150,
                                                         target_width=1000
                                                     )
+                                                    logger.info(f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
 
                                                     if image:
                                                         # キャプション作成

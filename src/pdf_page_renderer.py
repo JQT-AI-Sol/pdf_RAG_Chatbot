@@ -19,10 +19,18 @@ PDF2IMAGE_AVAILABLE = False
 try:
     from pdf2image import convert_from_path
     PDF2IMAGE_AVAILABLE = True
-    logger.info("pdf2image is available - PDF page rendering enabled")
+    logger.info("=" * 60)
+    logger.info("✅ PDF2IMAGE_AVAILABLE = True")
+    logger.info("✅ pdf2image is available - PDF page rendering ENABLED")
+    logger.info("✅ poppler-utils found - Highlights will work")
+    logger.info("=" * 60)
 except Exception as e:
-    logger.warning(f"pdf2image not available (poppler may not be installed): {e}")
-    logger.warning("PDF page preview will be disabled. Install poppler for full functionality.")
+    logger.warning("=" * 60)
+    logger.warning("❌ PDF2IMAGE_AVAILABLE = False")
+    logger.warning(f"❌ pdf2image not available: {e}")
+    logger.warning("❌ PDF page preview will be DISABLED")
+    logger.warning("💡 Check packages.txt contains: poppler-utils")
+    logger.warning("=" * 60)
 
 # 画像生成の設定
 DEFAULT_DPI = 150  # 標準品質
@@ -497,7 +505,7 @@ def extract_page_with_highlight(
     _vector_store,
     _rag_engine=None,
     use_llm_keywords: bool = True,
-    _cache_version: int = 2,  # Increment to force cache invalidation
+    _cache_version: int = 3,  # v3: Force cache invalidation + debug logs
     dpi: int = DEFAULT_DPI,
     target_width: int = DEFAULT_WIDTH
 ) -> Optional[Image.Image]:
@@ -518,8 +526,16 @@ def extract_page_with_highlight(
     Returns:
         PIL.Image: ハイライト付き画像、失敗時はNone
     """
+    # 🔍 実行確認ログ（デバッグ用）
+    logger.info(f"📸 extract_page_with_highlight() CALLED - cache_v{_cache_version}, pdf2image={PDF2IMAGE_AVAILABLE}")
+    logger.info(f"   → source={source_file}, page={page_number}, query_len={len(query) if query else 0}")
+
     if not PDF2IMAGE_AVAILABLE:
-        logger.warning("PDF page rendering is disabled (poppler not installed)")
+        logger.warning("=" * 60)
+        logger.warning("❌ PDF page rendering is DISABLED (poppler not installed)")
+        logger.warning(f"❌ Cannot render page {page_number} of {source_file}")
+        logger.warning("💡 Check Streamlit Cloud logs for poppler installation errors")
+        logger.warning("=" * 60)
         return None
 
     try:
