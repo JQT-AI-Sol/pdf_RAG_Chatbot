@@ -11,7 +11,7 @@ import sys
 
 # src モジュールのインポート
 from src.utils import load_config, load_environment, ensure_directories, setup_logging, encode_pdf_to_base64
-from src.document_processor import DocumentProcessor
+from src.document_processor import DocumentProcessor, convert_office_to_pdf
 from src.text_embedder import TextEmbedder
 from src.vision_analyzer import VisionAnalyzer
 from src.vector_store import VectorStore
@@ -255,11 +255,56 @@ def process_documents(uploaded_files, category):
             with open(static_doc_path, "wb") as f:
                 f.write(doc_bytes)
 
+            # 1.5. Office→PDF変換（Word/Excel/PowerPointの場合）
+            file_type = st.session_state.document_processor.get_file_type(str(doc_path))
+            conversion_config = st.session_state.config.get('office_to_pdf_conversion', {})
+            converted_pdf_path = None
+
+            if file_type in ["word", "excel", "powerpoint"] and conversion_config.get('enabled', True):
+                status_text.text(f"処理中: {uploaded_file.name} (1.5/?) - PDF変換中...")
+                try:
+                    logging.info(f"🔄 Converting {file_type} file to PDF: {uploaded_file.name}")
+                    converted_pdf_path = convert_office_to_pdf(
+                        str(doc_path),
+                        output_dir=conversion_config.get('output_directory', 'data/converted_pdfs'),
+                        timeout=conversion_config.get('timeout', 60)
+                    )
+
+                    if converted_pdf_path:
+                        logging.info(f"✅ PDF conversion successful: {converted_pdf_path}")
+                        # 変換後のPDFをstatic/pdfsにもコピー（プレビュー用）
+                        static_pdf_path = Path("static/pdfs") / converted_pdf_path.name
+                        static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                        import shutil
+                        shutil.copy(converted_pdf_path, static_pdf_path)
+                    else:
+                        logging.warning(f"⚠️ PDF conversion returned None, will process original file")
+                        if not conversion_config.get('fallback_on_error', True):
+                            st.sidebar.error(f"{uploaded_file.name}: PDF変換に失敗しました")
+                            continue
+
+                except Exception as e:
+                    logging.error(f"❌ PDF conversion error for {uploaded_file.name}: {e}", exc_info=True)
+                    if not conversion_config.get('fallback_on_error', True):
+                        st.sidebar.error(f"{uploaded_file.name}: PDF変換エラー - {str(e)}")
+                        continue
+                    else:
+                        logging.info(f"Falling back to original file processing")
+
             # 2. テキスト・画像抽出
             status_text.text(f"処理中: {uploaded_file.name} (2/?) - テキスト・画像抽出中...")
             try:
                 logging.info(f"Starting document processing for {uploaded_file.name}")
-                doc_result = st.session_state.document_processor.process_document(str(doc_path), category)
+                # PDF変換されたファイルがあればそれを使用、なければ元のファイルを使用
+                processing_path = str(converted_pdf_path) if converted_pdf_path else str(doc_path)
+                doc_result = st.session_state.document_processor.process_document(processing_path, category)
+
+                # 変換後のPDFパスをメタデータに追加（プレビュー機能で使用）
+                if converted_pdf_path:
+                    doc_result['metadata']['converted_pdf_path'] = str(converted_pdf_path)
+                    doc_result['metadata']['original_file_name'] = uploaded_file.name
+                    logging.info(f"   Converted PDF path saved: {converted_pdf_path}")
+
                 logging.info(f"Document processing completed for {uploaded_file.name}: {len(doc_result.get('text_chunks', []))} text chunks, {len(doc_result.get('images', []))} images")
             except Exception as e:
                 error_msg = f"ドキュメント処理中にエラーが発生しました: {str(e)}"

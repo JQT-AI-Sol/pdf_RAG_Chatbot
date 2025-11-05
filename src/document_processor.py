@@ -1,14 +1,18 @@
 """
-Unified document processor - PDF、Word、Excelを統一的に処理
+Unified document processor - PDF、Word、Excel、PowerPoint、テキストを統一的に処理
 """
 
 import logging
+import subprocess
+import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from src.pdf_processor import PDFProcessor
 from src.word_processor import WordProcessor
 from src.excel_processor import ExcelProcessor
+from src.pptx_processor import PowerPointProcessor
+from src.txt_processor import TextFileProcessor
 
 
 logger = logging.getLogger(__name__)
@@ -22,6 +26,8 @@ class DocumentProcessor:
     - PDF (.pdf)
     - Word (.docx, .doc)
     - Excel (.xlsx, .xls)
+    - PowerPoint (.pptx, .ppt)
+    - Text (.txt)
     """
 
     # サポートする拡張子
@@ -31,6 +37,9 @@ class DocumentProcessor:
         ".doc": "word",
         ".xlsx": "excel",
         ".xls": "excel",
+        ".pptx": "powerpoint",
+        ".ppt": "powerpoint",
+        ".txt": "text",
     }
 
     def __init__(self, config: Dict[str, Any]):
@@ -46,8 +55,10 @@ class DocumentProcessor:
         self.pdf_processor = PDFProcessor(config)
         self.word_processor = WordProcessor(config)
         self.excel_processor = ExcelProcessor(config)
+        self.powerpoint_processor = PowerPointProcessor(config)
+        self.text_processor = TextFileProcessor(config)
 
-        logger.info("DocumentProcessor initialized with support for: PDF, Word, Excel")
+        logger.info("DocumentProcessor initialized with support for: PDF, Word, Excel, PowerPoint, Text")
 
     def is_supported(self, file_path: str) -> bool:
         """
@@ -116,6 +127,10 @@ class DocumentProcessor:
                 result = self.word_processor.process_word(file_path, category)
             elif file_type == "excel":
                 result = self.excel_processor.process_excel(file_path, category)
+            elif file_type == "powerpoint":
+                result = self.powerpoint_processor.process_powerpoint(file_path, category)
+            elif file_type == "text":
+                result = self.text_processor.process_text_file(file_path, category)
             else:
                 # 理論上ここには到達しないはず
                 raise ValueError(f"Unknown file type: {file_type}")
@@ -169,3 +184,124 @@ class DocumentProcessor:
             dict: 抽出結果
         """
         return self.excel_processor.process_excel(excel_path, category)
+
+    def process_powerpoint(self, pptx_path: str, category: str) -> Dict[str, Any]:
+        """
+        PowerPointドキュメントを処理
+
+        Args:
+            pptx_path: PowerPointファイルのパス
+            category: ドキュメントカテゴリー
+
+        Returns:
+            dict: 抽出結果
+        """
+        return self.powerpoint_processor.process_powerpoint(pptx_path, category)
+
+    def process_text_file(self, txt_path: str, category: str) -> Dict[str, Any]:
+        """
+        テキストファイルを処理
+
+        Args:
+            txt_path: テキストファイルのパス
+            category: ドキュメントカテゴリー
+
+        Returns:
+            dict: 抽出結果
+        """
+        return self.text_processor.process_text_file(txt_path, category)
+
+
+def convert_office_to_pdf(
+    office_path: str,
+    output_dir: Optional[str] = None,
+    timeout: int = 60
+) -> Optional[Path]:
+    """
+    LibreOfficeを使用してOfficeファイル（Word/Excel/PowerPoint）をPDFに変換
+
+    Args:
+        office_path: 変換元のOfficeファイルパス
+        output_dir: 出力ディレクトリ（Noneの場合はdata/converted_pdfs）
+        timeout: 変換タイムアウト（秒）
+
+    Returns:
+        Path: 変換後のPDFファイルパス、失敗した場合はNone
+
+    Raises:
+        FileNotFoundError: 入力ファイルが存在しない場合
+        subprocess.TimeoutExpired: 変換がタイムアウトした場合
+    """
+    office_path = Path(office_path)
+
+    # ファイルの存在確認
+    if not office_path.exists():
+        error_msg = f"Office file not found: {office_path}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+
+    # 出力ディレクトリの設定
+    if output_dir is None:
+        output_dir = Path("data/converted_pdfs")
+    else:
+        output_dir = Path(output_dir)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 出力PDFファイル名
+    pdf_filename = office_path.stem + ".pdf"
+    output_path = output_dir / pdf_filename
+
+    logger.info(f"🔄 Converting Office file to PDF: {office_path.name}")
+    logger.info(f"   Output: {output_path}")
+
+    try:
+        # LibreOffice headlessモードでPDF変換
+        # Windows/Linux両対応
+        libreoffice_cmd = 'soffice' if os.name == 'nt' else 'libreoffice'
+
+        result = subprocess.run(
+            [
+                libreoffice_cmd,
+                '--headless',
+                '--convert-to', 'pdf',
+                '--outdir', str(output_dir),
+                str(office_path)
+            ],
+            check=True,
+            timeout=timeout,
+            capture_output=True,
+            text=True
+        )
+
+        # 変換成功確認
+        if output_path.exists():
+            logger.info(f"✅ PDF conversion successful: {output_path}")
+            return output_path
+        else:
+            logger.error(f"❌ PDF file not created: {output_path}")
+            logger.error(f"   stdout: {result.stdout}")
+            logger.error(f"   stderr: {result.stderr}")
+            return None
+
+    except FileNotFoundError:
+        logger.error("❌ LibreOffice not found. Please install LibreOffice:")
+        logger.error("   - Ubuntu/Debian: apt-get install libreoffice")
+        logger.error("   - macOS: brew install libreoffice")
+        logger.error("   - Windows: Download from https://www.libreoffice.org/")
+        return None
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"❌ PDF conversion timeout ({timeout}s): {office_path}")
+        return None
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"❌ PDF conversion failed: {office_path}")
+        logger.error(f"   Error: {e}")
+        logger.error(f"   stdout: {e.stdout}")
+        logger.error(f"   stderr: {e.stderr}")
+        return None
+
+    except Exception as e:
+        logger.error(f"❌ Unexpected error during PDF conversion: {e}")
+        return None

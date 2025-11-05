@@ -2,3 +2,7 @@ poppler-utils
 mecab
 libmecab-dev
 mecab-ipadic-utf8
+libreoffice
+libreoffice-writer
+libreoffice-calc
+libreoffice-impress

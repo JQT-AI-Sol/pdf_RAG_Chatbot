@@ -38,6 +38,15 @@ vector_store:
 pdf_upload:
   max_file_size_mb: 50  # 最大ファイルサイズ（MB）- 全ドキュメント形式に適用
 
+# Office→PDF変換設定（Word/Excel/PowerPoint用）
+office_to_pdf_conversion:
+  enabled: true  # Office→PDF変換を有効化
+  timeout: 60  # 変換タイムアウト（秒）
+  output_directory: "data/converted_pdfs"  # 変換後のPDF保存先
+  cache_converted_pdfs: true  # 変換済みPDFをキャッシュ（再アップロード時に高速化）
+  fallback_on_error: true  # 変換失敗時はテキスト抽出のみで継続
+  enable_preview: true  # 変換後のPDFでプレビュー・ハイライト機能を有効化
+
 # ドキュメント処理設定（PDF、Word、Excel、PowerPoint、Text共通）
 pdf_processing:
   chunk_size: 800

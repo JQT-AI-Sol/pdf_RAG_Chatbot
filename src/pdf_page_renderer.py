@@ -49,9 +49,10 @@ DEFAULT_WIDTH = 1000  # ピクセル幅
 def get_pdf_path(source_file: str, vector_store) -> Optional[Path]:
     """
     PDFファイルのローカルパスを取得（必要に応じてSupabase Storageからダウンロード）
+    Office→PDF変換されたファイルにも対応
 
     Args:
-        source_file: PDFファイル名
+        source_file: PDFファイル名（またはOfficeファイル名）
         vector_store: VectorStoreインスタンス（Supabase Storage連携用）
 
     Returns:
@@ -63,6 +64,27 @@ def get_pdf_path(source_file: str, vector_store) -> Optional[Path]:
     if local_pdf_path.exists():
         logger.info(f"Using local PDF: {local_pdf_path}")
         return local_pdf_path
+
+    # Office→PDF変換済みファイルをチェック
+    # source_fileが.docx, .xlsx, .pptx等の場合、.pdfに変換して検索
+    source_path = Path(source_file)
+    office_extensions = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt']
+
+    if source_path.suffix.lower() in office_extensions:
+        # 拡張子を.pdfに変更
+        pdf_filename = source_path.stem + ".pdf"
+
+        # 変換済みPDFディレクトリをチェック
+        converted_pdf_path = Path("data/converted_pdfs") / pdf_filename
+        if converted_pdf_path.exists():
+            logger.info(f"Using converted PDF: {converted_pdf_path}")
+            return converted_pdf_path
+
+        # static/pdfsディレクトリもチェック
+        static_pdf_path = Path("static/pdfs") / pdf_filename
+        if static_pdf_path.exists():
+            logger.info(f"Using static converted PDF: {static_pdf_path}")
+            return static_pdf_path
 
     # Supabase Storageから一時ディレクトリにダウンロード
     if vector_store and vector_store.provider == 'supabase':
