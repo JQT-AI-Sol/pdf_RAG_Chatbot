@@ -489,7 +489,7 @@ def highlight_text_on_image(
         return image
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=100)
 def extract_page_with_highlight(
     source_file: str,
     page_number: int,
@@ -497,6 +497,7 @@ def extract_page_with_highlight(
     _vector_store,
     _rag_engine=None,
     use_llm_keywords: bool = True,
+    _cache_version: int = 2,  # Increment to force cache invalidation
     dpi: int = DEFAULT_DPI,
     target_width: int = DEFAULT_WIDTH
 ) -> Optional[Image.Image]:
@@ -510,6 +511,7 @@ def extract_page_with_highlight(
         _vector_store: VectorStoreインスタンス
         _rag_engine: RAGEngineインスタンス（LLMキーワード抽出に使用、省略可）
         use_llm_keywords: LLMを使用したキーワード抽出を有効化（デフォルト: True）
+        _cache_version: キャッシュバージョン（変更時にインクリメント、通常変更不要）
         dpi: 解像度
         target_width: 画像幅
 
