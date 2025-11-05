@@ -17,6 +17,8 @@ from src.rag_engine import RAGEngine
 from src.pdf_manager import PDFManager
 from src.pdf_page_renderer import extract_page_as_image, extract_multiple_pages, extract_page_with_highlight, PDF2IMAGE_AVAILABLE
 
+# ロガー設定
+logger = logging.getLogger(__name__)
 
 # ページ設定
 st.set_page_config(
@@ -98,10 +100,10 @@ def sidebar():
     # ドキュメントアップロード
     st.sidebar.subheader("📄 ドキュメントアップロード")
     uploaded_files = st.sidebar.file_uploader(
-        "ファイルを選択 (PDF, Word, Excel)",
-        type=['pdf', 'docx', 'doc', 'xlsx', 'xls'],
+        "ファイルを選択 (PDF, Word, Excel, PowerPoint, Text)",
+        type=['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt'],
         accept_multiple_files=True,
-        help="対応形式: PDF (.pdf), Word (.docx, .doc), Excel (.xlsx, .xls)"
+        help="対応形式: PDF, Word, Excel, PowerPoint, Text"
     )
 
     # カテゴリー入力
