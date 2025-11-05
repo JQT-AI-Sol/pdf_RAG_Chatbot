@@ -1,10 +1,10 @@
 # OpenAI設定
 openai:
-  model_chat: "gpt-4o"  # GPT-4oを使用（ストリーミング対応）
-  model_vision: "gpt-5"  # GPT-5を画像解析用モデルとして使用
+  model_chat: "gpt-4.1"  # GPT-4.1を使用（ストリーミング対応）
+  model_vision: "gpt-4.1"  # GPT-4.1を画像解析用モデルとして使用
   model_embedding: "text-embedding-3-large"  # より高性能なembedding
-  temperature: 0.7  # GPT-5系はデフォルト値(1)のみサポート（パラメータ指定不要）
-  max_tokens: 16000  # max_completion_tokensとして使用（推論トークン+回答用）
+  temperature: 0.7  # 温度パラメータ
+  max_tokens: 16000  # 最大トークン数
 
 # Gemini設定
 gemini:

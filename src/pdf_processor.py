@@ -11,7 +11,7 @@ import io
 import tiktoken
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 logger = logging.getLogger(__name__)

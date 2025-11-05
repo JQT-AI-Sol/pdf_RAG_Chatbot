@@ -241,7 +241,7 @@ class VisionAnalyzer:
                             ]
                         }
                     ],
-                    max_tokens=4096
+                    max_completion_tokens=4096
                 )
 
                 if not response.choices or not response.choices[0].message.content:
