@@ -548,7 +548,7 @@ def extract_page_with_highlight(
     _rag_engine=None,
     _vision_analyzer=None,
     use_llm_keywords: bool = True,
-    _cache_version: int = 4,  # v4: OCR fallback implementation
+    cache_version: int = 4,  # v4: OCR fallback implementation (NO underscore to include in cache key!)
     dpi: int = DEFAULT_DPI,
     target_width: int = DEFAULT_WIDTH
 ) -> Optional[Image.Image]:
@@ -563,7 +563,7 @@ def extract_page_with_highlight(
         _rag_engine: RAGEngineインスタンス（LLMキーワード抽出に使用、省略可）
         _vision_analyzer: VisionAnalyzerインスタンス（OCRフォールバック用、省略可）
         use_llm_keywords: LLMを使用したキーワード抽出を有効化（デフォルト: True）
-        _cache_version: キャッシュバージョン（変更時にインクリメント、通常変更不要）
+        cache_version: キャッシュバージョン（変更時にインクリメント、通常変更不要）
         dpi: 解像度
         target_width: 画像幅
 
@@ -571,7 +571,7 @@ def extract_page_with_highlight(
         PIL.Image: ハイライト付き画像、失敗時はNone
     """
     # 🔍 実行確認ログ（デバッグ用）
-    logger.info(f"📸 extract_page_with_highlight() CALLED - cache_v{_cache_version}, pdf2image={PDF2IMAGE_AVAILABLE}")
+    logger.info(f"📸 extract_page_with_highlight() CALLED - cache_v{cache_version}, pdf2image={PDF2IMAGE_AVAILABLE}")
     logger.info(f"   → source={source_file}, page={page_number}, query_len={len(query) if query else 0}")
 
     if not PDF2IMAGE_AVAILABLE:
