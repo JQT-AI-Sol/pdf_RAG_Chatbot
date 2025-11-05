@@ -15,6 +15,7 @@ from src.vision_analyzer import VisionAnalyzer
 from src.vector_store import VectorStore
 from src.rag_engine import RAGEngine
 from src.pdf_manager import PDFManager
+from src.pdf_page_renderer import extract_page_as_image, extract_multiple_pages, extract_page_with_highlight, PDF2IMAGE_AVAILABLE
 
 
 # ページ設定
@@ -63,7 +64,7 @@ def initialize_app():
         # Vision Analyzerの状態チェック
         if not st.session_state.vision_analyzer.api_key_valid:
             st.session_state.vision_disabled = True
-            logger.warning("Vision analysis is disabled due to missing or invalid GEMINI_API_KEY")
+            logger.warning("Vision analysis is disabled due to missing or invalid OPENAI_API_KEY")
         else:
             st.session_state.vision_disabled = False
 
@@ -78,8 +79,20 @@ def sidebar():
     if st.session_state.get('vision_disabled', False):
         st.sidebar.warning(
             "⚠️ 画像解析機能が無効です\n\n"
-            "GEMINI_API_KEYが設定されていません。\n"
-            "画像やグラフの解析を有効にするには、.envファイルにGEMINI_API_KEYを設定してください。"
+            "OPENAI_API_KEYが設定されていません。\n"
+            "画像やグラフの解析を有効にするには、.envファイルにOPENAI_API_KEYを設定してください。"
+        )
+
+    # PDF Page Preview警告表示
+    if not PDF2IMAGE_AVAILABLE:
+        st.sidebar.info(
+            "ℹ️ PDFページプレビュー機能が無効です\n\n"
+            "**ローカル環境（Windows）:**\n"
+            "Popplerをインストールしてください。\n"
+            "`choco install poppler` または\n"
+            "[手動ダウンロード](https://github.com/oschwartz10612/poppler-windows/releases)\n\n"
+            "**Streamlit Cloud:**\n"
+            "自動的に有効になります（packages.txt対応済み）"
         )
 
     # PDFアップロード
@@ -172,7 +185,7 @@ def sidebar():
 
     # AIモデル選択
     model_options = {
-        "GPT-4o": "openai",
+        "GPT-4.1": "openai",
         "Gemini-2.5-Pro": "gemini"
     }
     current_model_display = [k for k, v in model_options.items() if v == st.session_state.selected_model][0]
@@ -608,7 +621,7 @@ def main_area():
         #### **Step 4: 質問の入力** 💬
         - サイドバーで「🔍 検索対象カテゴリー」と「🤖 AIモデル」を選択
           - **検索対象カテゴリー**: 「全カテゴリー」またはドキュメント範囲を指定
-          - **GPT-4o**: 高度な推論能力と安定した応答品質
+          - **GPT-4.1**: 最新のOpenAIモデル、高度な推論能力と安定した応答品質
           - **Gemini-2.5-Pro**: マルチモーダルに強く、画像・グラフ・複雑な文書の理解に優れる
         - 最下部の入力欄に質問を入力してEnterキーまたは送信ボタンをクリック
 
@@ -682,6 +695,68 @@ def main_area():
                             }
                         pdf_references[source_file]['pages'].add(page_number)
 
+                    # 📸 参照ページプレビュー（上位3-5ページ）
+                    top_pages = st.session_state.rag_engine.get_top_reference_pages(
+                        sources,
+                        top_n=5
+                    )
+
+                    if top_pages:
+                        with st.expander(f"📸 参照ページプレビュー ({len(top_pages)}ページ)", expanded=True):
+                            st.caption("関連度の高い順に表示しています（検索クエリをハイライト表示）")
+
+                            # 対応する質問を取得（履歴から直前のユーザーメッセージ）
+                            user_query = ""
+                            if idx > 0 and st.session_state.chat_history[idx - 1]["role"] == "user":
+                                user_query = st.session_state.chat_history[idx - 1]["content"]
+
+                            # ページごとにグループ化（PDFファイル別）
+                            pages_by_pdf = {}
+                            for page_info in top_pages:
+                                source_file = page_info['source_file']
+                                if source_file not in pages_by_pdf:
+                                    pages_by_pdf[source_file] = []
+                                pages_by_pdf[source_file].append(page_info)
+
+                            # PDFファイルごとにページ画像を表示
+                            for source_file, pages in pages_by_pdf.items():
+                                st.markdown(f"**📄 {source_file}**")
+
+                                # 最大3列でページを表示
+                                cols_per_row = min(3, len(pages))
+                                for i in range(0, len(pages), cols_per_row):
+                                    cols = st.columns(cols_per_row)
+                                    for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
+                                        page_num = page_info['page_number']
+                                        score = page_info.get('score')
+
+                                        with cols[col_idx]:
+                                            # ハイライト付き画像を取得
+                                            image = extract_page_with_highlight(
+                                                source_file=source_file,
+                                                page_number=page_num,
+                                                query=user_query,
+                                                _vector_store=st.session_state.vector_store,
+                                                dpi=150,
+                                                target_width=1000
+                                            )
+
+                                            if image:
+                                                # キャプション作成
+                                                caption = f"ページ {page_num}"
+                                                if score is not None:
+                                                    caption += f" (関連度: {score:.3f})"
+
+                                                st.image(image, caption=caption, use_container_width=True)
+
+                                                # 内容プレビュー
+                                                with st.expander("📝 内容プレビュー"):
+                                                    st.text(page_info.get('content_preview', ''))
+                                            else:
+                                                st.warning(f"ページ {page_num} の画像を取得できませんでした")
+
+                                st.markdown("---")
+
                     # PDFファイルごとに表示
                     with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
                         for pdf_idx, (source_file, info) in enumerate(pdf_references.items(), 1):
@@ -709,10 +784,10 @@ def main_area():
 
         # モデル表示名を取得
         model_display_names = {
-            "openai": "GPT-4o",
+            "openai": "GPT-4.1",
             "gemini": "Gemini-2.5-Pro"
         }
-        current_model_display = model_display_names.get(st.session_state.selected_model, "GPT-4o")
+        current_model_display = model_display_names.get(st.session_state.selected_model, "GPT-4.1")
 
         try:
             # ユーザーの質問を表示
@@ -819,6 +894,64 @@ def main_area():
                                     'pages': set()
                                 }
                             pdf_references[source_file]['pages'].add(page_number)
+
+                        # 📸 参照ページプレビュー（上位3-5ページ）
+                        if result_data and result_data.get('sources'):
+                            top_pages = st.session_state.rag_engine.get_top_reference_pages(
+                                result_data['sources'],
+                                top_n=5
+                            )
+
+                            if top_pages:
+                                with st.expander(f"📸 参照ページプレビュー ({len(top_pages)}ページ)", expanded=True):
+                                    st.caption("関連度の高い順に表示しています（検索クエリをハイライト表示）")
+
+                                    # ページごとにグループ化（PDFファイル別）
+                                    pages_by_pdf = {}
+                                    for page_info in top_pages:
+                                        source_file = page_info['source_file']
+                                        if source_file not in pages_by_pdf:
+                                            pages_by_pdf[source_file] = []
+                                        pages_by_pdf[source_file].append(page_info)
+
+                                    # PDFファイルごとにページ画像を表示
+                                    for source_file, pages in pages_by_pdf.items():
+                                        st.markdown(f"**📄 {source_file}**")
+
+                                        # 最大3列でページを表示
+                                        cols_per_row = min(3, len(pages))
+                                        for i in range(0, len(pages), cols_per_row):
+                                            cols = st.columns(cols_per_row)
+                                            for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
+                                                page_num = page_info['page_number']
+                                                score = page_info.get('score')
+
+                                                with cols[col_idx]:
+                                                    # ハイライト付き画像を取得
+                                                    image = extract_page_with_highlight(
+                                                        source_file=source_file,
+                                                        page_number=page_num,
+                                                        query=question,  # 検索クエリをハイライト
+                                                        _vector_store=st.session_state.vector_store,
+                                                        dpi=150,
+                                                        target_width=1000
+                                                    )
+
+                                                    if image:
+                                                        # キャプション作成
+                                                        caption = f"ページ {page_num}"
+                                                        if score is not None:
+                                                            caption += f" (関連度: {score:.3f})"
+
+                                                        st.image(image, caption=caption, use_container_width=True)
+
+                                                        # 内容プレビュー
+                                                        with st.expander("📝 内容プレビュー"):
+                                                            st.text(page_info.get('content_preview', ''))
+                                                    else:
+                                                        st.warning(f"ページ {page_num} の画像を取得できませんでした")
+
+                                        st.markdown("---")
 
                         # PDFファイルごとに表示
                         with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):

@@ -716,3 +716,56 @@ class RAGEngine:
                     "content": chunk.text,
                 }
         logger.debug("Gemini streaming completed")
+
+    def get_top_reference_pages(
+        self,
+        search_results: Dict[str, Any],
+        top_n: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """
+        検索結果から関連度の高いトップNページを抽出
+
+        Args:
+            search_results: ベクトル検索結果（rerankingスコア含む）
+            top_n: 抽出するページ数（デフォルト: 5）
+
+        Returns:
+            list: トップNページの情報
+                [{
+                    "source_file": str,
+                    "page_number": int,
+                    "score": float,  # rerankスコア（なければNone）
+                    "content_preview": str,  # 内容のプレビュー（最初の100文字）
+                }]
+        """
+        top_pages = []
+        seen_pages = set()  # (source_file, page_number) の重複チェック用
+
+        # テキスト検索結果から抽出
+        for result in search_results.get("text", []):
+            source_file = result.get("source_file", "")
+            page_number = result.get("page_number", 0)
+
+            # ページ識別子
+            page_id = (source_file, page_number)
+
+            # 重複チェック
+            if page_id in seen_pages:
+                continue
+
+            # ページ情報を追加
+            top_pages.append({
+                "source_file": source_file,
+                "page_number": page_number,
+                "score": result.get("rerank_score"),  # rerankingスコア（なければNone）
+                "content_preview": result.get("content", "")[:100],  # 最初の100文字
+            })
+
+            seen_pages.add(page_id)
+
+            # 目標数に達したら終了
+            if len(top_pages) >= top_n:
+                break
+
+        logger.info(f"Extracted {len(top_pages)} unique pages from search results")
+        return top_pages

@@ -78,3 +78,8 @@ dmypy.json
 test_supabase_*.py
 test_metadata_*.py
 check_supabase_*.py
+
+# Development tools
+.claude/
+cache/
+tools/
