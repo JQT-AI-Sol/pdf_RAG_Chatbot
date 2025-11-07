@@ -12,6 +12,8 @@ import tiktoken
 from PIL import Image
 import io
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from openai import OpenAI
+import os
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,20 @@ class ExcelProcessor:
         self.vision_config = config.get("vision", {})
         self.rag_config = config.get("rag", {})
         self.chunking_config = config.get("chunking", {})
+        self.excel_config = config.get("excel_processing", {})
+
+        # OpenAI APIクライアント初期化（表要約用）
+        self.openai_client = None
+        self.model_chat = config.get("openai", {}).get("model_chat", "gpt-4.1")
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            try:
+                self.openai_client = OpenAI(api_key=api_key)
+                logger.info(f"OpenAI client initialized for Excel processing (model: {self.model_chat})")
+            except Exception as e:
+                logger.error(f"Failed to initialize OpenAI client: {e}")
+        else:
+            logger.warning("OPENAI_API_KEY not set - Excel table summarization will be disabled")
 
         # tiktokenエンコーダーの初期化
         model_name = config.get("openai", {}).get("model_chat", "gpt-4.1")
@@ -110,7 +126,9 @@ class ExcelProcessor:
                     table_markdown = self._sheet_to_markdown(sheet)
 
                     if table_markdown:
-                        sheet_text.append(table_markdown)
+                        # LLMで自然言語要約を生成（検索精度向上のため）
+                        table_summary = self._summarize_table_with_llm(table_markdown, sheet_name)
+                        sheet_text.append(table_summary)
                         sheet_text.append("\n\n")
 
                 # シートのテキストを結合
@@ -359,3 +377,69 @@ class ExcelProcessor:
 
         logger.debug(f"Created {len(chunks)} chunks from Excel sheet ({len(tokens)} tokens)")
         return chunks
+
+    def _summarize_table_with_llm(self, markdown_table: str, sheet_name: str = "") -> str:
+        """
+        MarkdownテーブルをLLMで自然言語要約に変換
+
+        Args:
+            markdown_table: Markdown形式の表データ
+            sheet_name: シート名
+
+        Returns:
+            str: 自然言語要約テキスト
+        """
+        if not self.openai_client:
+            logger.warning("OpenAI client not initialized - returning original markdown")
+            return markdown_table
+
+        # 要約生成を有効化するか確認
+        if not self.excel_config.get("enable_llm_summarization", True):
+            logger.debug("LLM summarization disabled in config")
+            return markdown_table
+
+        try:
+            # 要約プロンプトを取得
+            prompt_template = self.excel_config.get("summarization_prompt", """
+あなたはExcelの表データを自然な日本語で説明する専門家です。
+以下のMarkdown形式の表データを、検索しやすい自然な日本語の文章に変換してください。
+
+【変換のルール】
+1. 表の内容を正確に説明する
+2. 数値データは具体的な値を含める
+3. 表の構造（行・列の関係）を文章で表現
+4. キーワードを繰り返して検索性を向上
+5. 箇条書きや段落を使って読みやすくする
+
+【Markdown表データ】
+{markdown_table}
+
+【自然言語での説明】
+""")
+
+            prompt = prompt_template.format(markdown_table=markdown_table, sheet_name=sheet_name)
+
+            logger.info(f"Generating natural language summary for table (sheet: {sheet_name})")
+
+            response = self.openai_client.chat.completions.create(
+                model=self.model_chat,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,  # 低めの温度で安定した要約
+                max_completion_tokens=2000
+            )
+
+            summary = response.choices[0].message.content.strip()
+
+            if summary:
+                logger.info(f"Successfully generated summary ({len(summary)} chars) for sheet: {sheet_name}")
+                return summary
+            else:
+                logger.warning("Empty summary returned, using original markdown")
+                return markdown_table
+
+        except Exception as e:
+            logger.error(f"Failed to generate LLM summary for table: {e}")
+            logger.warning("Falling back to original markdown")
+            return markdown_table

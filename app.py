@@ -295,12 +295,14 @@ def process_documents(uploaded_files, category):
             with open(static_doc_path, "wb") as f:
                 f.write(doc_bytes)
 
-            # 1.5. Office→PDF変換（Word/Excel/PowerPointの場合）
+            # 1.5. Office→PDF変換（Word/PowerPointの場合、Excelはプレビュー用のみ）
             file_type = st.session_state.document_processor.get_file_type(str(doc_path))
             conversion_config = st.session_state.config.get('office_to_pdf_conversion', {})
             converted_pdf_path = None
 
-            if file_type in ["word", "excel", "powerpoint"] and conversion_config.get('enabled', True):
+            # ExcelはLLM要約で直接処理するため、PDF変換はプレビュー用のみ
+            if file_type in ["word", "powerpoint"] and conversion_config.get('enabled', True):
+                # Word/PowerPoint: PDF変換して処理
                 status_text.text(f"処理中: {uploaded_file.name} (1.5/?) - PDF変換中...")
                 try:
                     logging.info(f"🔄 Converting {file_type} file to PDF: {uploaded_file.name}")
@@ -331,12 +333,42 @@ def process_documents(uploaded_files, category):
                     else:
                         logging.info(f"Falling back to original file processing")
 
+            elif file_type == "excel" and conversion_config.get('enabled', True):
+                # Excel: プレビュー用にPDF変換するが、処理は元のExcelファイルで実行（LLM要約）
+                status_text.text(f"処理中: {uploaded_file.name} (1.5/?) - PDF変換中（プレビュー用）...")
+                try:
+                    logging.info(f"🔄 Converting Excel to PDF for preview: {uploaded_file.name}")
+                    preview_pdf_path = convert_office_to_pdf(
+                        str(doc_path),
+                        output_dir=conversion_config.get('output_directory', 'data/converted_pdfs'),
+                        timeout=conversion_config.get('timeout', 60)
+                    )
+
+                    if preview_pdf_path:
+                        logging.info(f"✅ PDF preview conversion successful: {preview_pdf_path}")
+                        # 変換後のPDFをstatic/pdfsにもコピー（プレビュー用）
+                        static_pdf_path = Path("static/pdfs") / preview_pdf_path.name
+                        static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                        import shutil
+                        shutil.copy(preview_pdf_path, static_pdf_path)
+                        # Note: converted_pdf_pathは設定しない（処理は元のExcelで実行）
+                    else:
+                        logging.warning(f"⚠️ PDF preview conversion failed, but will continue with Excel processing")
+
+                except Exception as e:
+                    logging.warning(f"⚠️ PDF preview conversion error for {uploaded_file.name}: {e}")
+                    logging.info(f"Continuing with Excel direct processing")
+
             # 2. テキスト・画像抽出
             status_text.text(f"処理中: {uploaded_file.name} (2/?) - テキスト・画像抽出中...")
             try:
                 logging.info(f"Starting document processing for {uploaded_file.name}")
-                # PDF変換されたファイルがあればそれを使用、なければ元のファイルを使用
-                processing_path = str(converted_pdf_path) if converted_pdf_path else str(doc_path)
+                # Excelは常に元のファイルで処理（LLM要約）、Word/PowerPointはPDF変換後を使用
+                if file_type == "excel":
+                    processing_path = str(doc_path)  # Excelは直接処理
+                    logging.info(f"Processing Excel directly with LLM summarization: {processing_path}")
+                else:
+                    processing_path = str(converted_pdf_path) if converted_pdf_path else str(doc_path)
                 doc_result = st.session_state.document_processor.process_document(processing_path, category)
 
                 # 変換後のPDFパスをメタデータに追加（プレビュー機能で使用）
