@@ -954,7 +954,8 @@ def main_area():
                                                             pages_to_render=[page_num],  # 該当ページのみ
                                                             width=350,
                                                             height=500,
-                                                            render_text=True
+                                                            render_text=True,
+                                                            key=f"pdf_viewer_hist_{idx}_{source_file}_{page_num}_{col_idx}"
                                                         )
 
                                                         # 内容プレビュー
@@ -1236,7 +1237,8 @@ def main_area():
                                                                 pages_to_render=[page_num],  # 該当ページのみ
                                                                 width=350,
                                                                 height=500,
-                                                                render_text=True
+                                                                render_text=True,
+                                                                key=f"pdf_viewer_new_{source_file}_{page_num}_{col_idx}"
                                                             )
 
                                                             # 内容プレビュー
