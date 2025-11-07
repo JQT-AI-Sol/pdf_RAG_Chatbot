@@ -319,6 +319,18 @@ def process_documents(uploaded_files, category):
                         static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
                         import shutil
                         shutil.copy(converted_pdf_path, static_pdf_path)
+
+                        # Supabase Storageにもアップロード
+                        if st.session_state.vector_store.provider == 'supabase':
+                            try:
+                                st.session_state.vector_store.upload_pdf_to_storage(
+                                    str(converted_pdf_path),
+                                    converted_pdf_path.name,
+                                    category
+                                )
+                                logging.info(f"✅ Converted PDF uploaded to Supabase Storage: {converted_pdf_path.name}")
+                            except Exception as e:
+                                logging.warning(f"⚠️ Failed to upload converted PDF to Supabase Storage: {e}")
                     else:
                         logging.warning(f"⚠️ PDF conversion returned None, will process original file")
                         if not conversion_config.get('fallback_on_error', True):
@@ -351,6 +363,19 @@ def process_documents(uploaded_files, category):
                         static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
                         import shutil
                         shutil.copy(preview_pdf_path, static_pdf_path)
+
+                        # Supabase Storageにもアップロード
+                        if st.session_state.vector_store.provider == 'supabase':
+                            try:
+                                st.session_state.vector_store.upload_pdf_to_storage(
+                                    str(preview_pdf_path),
+                                    preview_pdf_path.name,
+                                    category
+                                )
+                                logging.info(f"✅ Preview PDF uploaded to Supabase Storage: {preview_pdf_path.name}")
+                            except Exception as e:
+                                logging.warning(f"⚠️ Failed to upload preview PDF to Supabase Storage: {e}")
+
                         # Note: converted_pdf_pathは設定しない（処理は元のExcelで実行）
                     else:
                         logging.warning(f"⚠️ PDF preview conversion failed, but will continue with Excel processing")
