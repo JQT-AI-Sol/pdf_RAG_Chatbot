@@ -141,6 +141,13 @@ class VectorStore:
     def _add_text_chunks_supabase(self, chunks: List[Dict[str, Any]], embeddings: List[List[float]]):
         """Supabaseにテキストチャンクを追加"""
         try:
+            # デバッグ: Embeddingサイズを確認
+            if embeddings and len(embeddings) > 0:
+                first_emb_dim = len(embeddings[0])
+                logger.info(f"🔍 DEBUG: Saving {len(embeddings)} embeddings, first dimension: {first_emb_dim}")
+                if first_emb_dim != 3072:
+                    logger.error(f"❌ DEBUG: ABNORMAL embedding dimension before save! Expected 3072, got {first_emb_dim}")
+
             records = []
             for chunk, embedding in zip(chunks, embeddings):
                 records.append({
@@ -208,6 +215,13 @@ class VectorStore:
         """Supabaseに画像コンテンツを追加（画像はStorageにアップロード）"""
         try:
             from pathlib import Path
+
+            # デバッグ: Embeddingサイズを確認
+            if embeddings and len(embeddings) > 0:
+                first_emb_dim = len(embeddings[0])
+                logger.info(f"🔍 DEBUG: Saving {len(embeddings)} image embeddings, first dimension: {first_emb_dim}")
+                if first_emb_dim != 3072:
+                    logger.error(f"❌ DEBUG: ABNORMAL image embedding dimension before save! Expected 3072, got {first_emb_dim}")
 
             records = []
             for img_data, embedding in zip(image_data_list, embeddings):
