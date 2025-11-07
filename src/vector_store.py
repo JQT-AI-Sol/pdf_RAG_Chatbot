@@ -328,9 +328,19 @@ class VectorStore:
         results = {'text': [], 'images': []}
 
         try:
+            # デバッグ: データが存在するか確認
+            if category:
+                count_response = self.client.table(self.text_table)\
+                    .select('id', count='exact')\
+                    .eq('category', category)\
+                    .execute()
+                logger.info(f"🔍 DEBUG: Found {count_response.count} text chunks with category='{category}' in database")
+
             # テキスト検索
             if search_type in ['text', 'both']:
-                logger.info(f"Calling match_text_chunks with category={category}, top_k={top_k}")
+                logger.info(f"Calling match_text_chunks with category={category}, top_k={top_k}, threshold={self.match_threshold}")
+                logger.info(f"🔍 DEBUG: Embedding dimension: {len(query_embedding)}")
+
                 response = self.client.rpc(
                     'match_text_chunks',
                     {
@@ -372,7 +382,15 @@ class VectorStore:
 
             # 画像検索
             if search_type in ['image', 'both']:
-                logger.info(f"Calling match_image_contents with category={category}, top_k={top_k}")
+                # デバッグ: データが存在するか確認
+                if category:
+                    count_response = self.client.table(self.image_table)\
+                        .select('id', count='exact')\
+                        .eq('category', category)\
+                        .execute()
+                    logger.info(f"🔍 DEBUG: Found {count_response.count} image contents with category='{category}' in database")
+
+                logger.info(f"Calling match_image_contents with category={category}, top_k={top_k}, threshold={self.match_threshold}")
                 response = self.client.rpc(
                     'match_image_contents',
                     {
