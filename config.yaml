@@ -78,6 +78,7 @@ pdf_processing:
 # Excel処理設定
 excel_processing:
   enable_llm_summarization: true  # LLMで表を自然言語要約（検索精度大幅向上）
+  # 注意: ExcelはPDF変換せず直接処理（app.pyで制御）、Vision AIの設定は適用されない
   summarization_prompt: |
     あなたはExcelの表データを自然な日本語で説明する専門家です。
     以下のMarkdown形式の表データを、検索しやすい自然な日本語の文章に変換してください。
@@ -104,7 +105,7 @@ vision:
   # Vision AI使用範囲
   # 注意: analysis_prompt_tableとanalysis_prompt_graphはこのvisionセクション内で定義されています
   use_for_charts_only: true  # グラフのみVision使用（推奨）
-  use_for_complex_tables: false  # Excelは直接処理（LLM要約）でPDF変換の改ページ問題を回避
+  use_for_complex_tables: true  # PDFの複雑な表をVision AIで自然言語化（Excelは別途LLM要約）
   use_for_simple_tables: false  # シンプルな表はMarkdown化のみ
   analysis_prompt_table: |
     【重要】あなたは技術文書・制度説明資料を解析する専門家です。
