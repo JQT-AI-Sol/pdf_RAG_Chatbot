@@ -616,6 +616,60 @@ class PDFProcessor:
                         logger.warning(f"Failed to extract image {img_idx} from page {page_num}: {e}")
                         continue
 
+            # 3. ページ全体を画像化（フローチャート等のベクターグラフィックス対応）
+            # 条件: 埋め込み画像も複雑な表も抽出されなかった場合
+            if len(images) == 0 and not any(t.get("text") for t in table_markdowns if t.get("text", "").strip()):
+                # ページに何らかのコンテンツがあるかチェック
+                page_text = page.extract_text()
+                has_content = page_text and len(page_text.strip()) > 50  # 最低50文字
+
+                # pdfplumberのページオブジェクトは図形情報も持っている
+                # curves, rects, linesなどのプロパティで図形の有無を確認
+                has_graphics = False
+                if hasattr(page, 'curves') and page.curves:
+                    has_graphics = True
+                elif hasattr(page, 'rects') and page.rects:
+                    has_graphics = True
+                elif hasattr(page, 'lines') and page.lines:
+                    has_graphics = True
+
+                # コンテンツまたは図形があれば、ページ全体を画像化
+                if has_content or has_graphics:
+                    try:
+                        logger.info(f"No images/tables found on page {page_num}, but has content/graphics. Capturing full page as image.")
+
+                        # ページ全体を画像化
+                        im = page.to_image(resolution=150)
+                        pil_image = im.original
+
+                        # 画像をリサイズ（大きすぎる場合）
+                        if max(pil_image.size) > max_size:
+                            ratio = max_size / max(pil_image.size)
+                            new_size = tuple(int(dim * ratio) for dim in pil_image.size)
+                            pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
+
+                        # 画像を保存
+                        image_filename = f"page_{page_num}_full.png"
+                        image_path = output_dir / image_filename
+                        self.save_extracted_image(pil_image, str(image_path))
+
+                        # メタデータを作成
+                        image_info = {
+                            "image_path": str(image_path),
+                            "page_number": page_num,
+                            "image_index": 0,
+                            "width": pil_image.size[0],
+                            "height": pil_image.size[1],
+                            "source_file": Path(pdf_path).name,
+                            "category": None,  # 後で設定される
+                            "content_type": "full_page",  # ページ全体
+                        }
+                        images.append(image_info)
+
+                        logger.info(f"Captured full page {page_num} as image")
+                    except Exception as e:
+                        logger.warning(f"Failed to capture full page {page_num}: {e}")
+
             logger.info(f"Extracted {len(images)} images and {len(table_markdowns)} markdown tables from page {page_num}")
 
         except Exception as e:
