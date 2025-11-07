@@ -160,22 +160,42 @@ class VectorStore:
             # MeCabで分かち書き
             try:
                 tokens = self.tokenizer.parse(text).strip().split()
+                logger.debug(f"MeCab tokenization: '{text}' -> {tokens[:10]}{'...' if len(tokens) > 10 else ''}")
                 return [token for token in tokens if len(token) > 1]  # 1文字のトークンは除外
             except Exception as e:
-                logger.warning(f"MeCab tokenization failed: {e}, falling back to simple split")
+                logger.warning(f"MeCab tokenization failed: {e}, falling back to regex-based split")
 
-        # フォールバック: 簡易的な分かち書き
-        # 日本語の場合は文字単位、英語の場合はスペース区切り
+        # フォールバック: Regex-based smart tokenization
+        # 英数字、ひらがな、カタカナ、漢字をそれぞれまとまりとして抽出
+        import re
+
+        # 重要な略語（2-4文字の英語）を先に保護
+        important_keywords = ['SNS', 'AI', 'IT', 'PC', 'OS', 'API', 'URL', 'VPN', 'DNS', 'HTTP', 'HTTPS']
+
+        # パターンマッチングで単語を抽出
+        # [a-zA-Z0-9]+: 連続する英数字（SNS、API、123など）
+        # [ぁ-ん]+: 連続するひらがな（利用、注意など）
+        # [ァ-ヴー]+: 連続するカタカナ（セキュリティなど）
+        # [一-龥]+: 連続する漢字（注意点、利用など）
+        words = re.findall(r'[a-zA-Z0-9]+|[ぁ-ん]+|[ァ-ヴー]+|[一-龥]+', text)
+
         tokens = []
-        for word in text.split():
-            if any('\u3000' <= c <= '\u9fff' for c in word):  # 日本語を含む場合
-                # 日本語は文字単位で分割（簡易的）
-                tokens.extend([c for c in word if c.strip()])
-            else:
-                # 英語はそのまま
-                tokens.append(word.lower())
+        for word in words:
+            # 英数字の場合
+            if word.isascii():
+                # 重要な略語は大文字で保持
+                upper_word = word.upper()
+                if upper_word in important_keywords:
+                    tokens.append(upper_word)
+                # 2文字以上の英数字は小文字化して追加
+                elif len(word) >= 2:
+                    tokens.append(word.lower())
+            # 日本語の場合は2文字以上のトークンのみ
+            elif len(word) >= 2:
+                tokens.append(word)
 
-        return [token for token in tokens if len(token) > 1]
+        logger.debug(f"Regex tokenization: '{text}' -> {tokens[:10]}{'...' if len(tokens) > 10 else ''}")
+        return tokens
 
     def add_text_chunks(self, chunks: List[Dict[str, Any]], embeddings: List[List[float]]):
         """
