@@ -143,8 +143,11 @@ class VectorStore:
         try:
             # デバッグ: Embeddingサイズを確認
             if embeddings and len(embeddings) > 0:
-                first_emb_dim = len(embeddings[0])
+                first_emb = embeddings[0]
+                first_emb_dim = len(first_emb)
                 logger.info(f"🔍 DEBUG: Saving {len(embeddings)} embeddings, first dimension: {first_emb_dim}")
+                logger.info(f"🔍 DEBUG: Embedding type before save: {type(first_emb)}")
+                logger.info(f"🔍 DEBUG: First 3 values: {first_emb[:3]}")
                 if first_emb_dim != 3072:
                     logger.error(f"❌ DEBUG: ABNORMAL embedding dimension before save! Expected 3072, got {first_emb_dim}")
 
