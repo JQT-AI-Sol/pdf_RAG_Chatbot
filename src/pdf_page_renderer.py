@@ -58,33 +58,35 @@ def get_pdf_path(source_file: str, vector_store) -> Optional[Path]:
     Returns:
         Path: PDFのローカルパス、取得失敗時はNone
     """
-    # まずローカルストレージをチェック
+    source_path = Path(source_file)
+    office_extensions = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt']
+
+    # Office形式（Word/Excel/PowerPoint）の場合は変換PDFを優先
+    if source_path.suffix.lower() in office_extensions:
+        # 拡張子を.pdfに変更
+        pdf_filename = source_path.stem + ".pdf"
+
+        # 変換済みPDFディレクトリをチェック（優先度1）
+        converted_pdf_path = Path("data/converted_pdfs") / pdf_filename
+        if converted_pdf_path.exists():
+            logger.info(f"Using converted PDF for Office file: {converted_pdf_path}")
+            return converted_pdf_path
+
+        # static/pdfsディレクトリもチェック（優先度2）
+        static_pdf_path = Path("static/pdfs") / pdf_filename
+        if static_pdf_path.exists():
+            logger.info(f"Using static converted PDF for Office file: {static_pdf_path}")
+            return static_pdf_path
+
+        # 変換PDFが見つからない場合は警告
+        logger.warning(f"Converted PDF not found for Office file: {source_file}")
+
+    # 通常のPDF、またはOffice形式だが変換PDFがない場合
     local_pdf_path = Path("data/uploaded_pdfs") / source_file
 
     if local_pdf_path.exists():
         logger.info(f"Using local PDF: {local_pdf_path}")
         return local_pdf_path
-
-    # Office→PDF変換済みファイルをチェック
-    # source_fileが.docx, .xlsx, .pptx等の場合、.pdfに変換して検索
-    source_path = Path(source_file)
-    office_extensions = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt']
-
-    if source_path.suffix.lower() in office_extensions:
-        # 拡張子を.pdfに変更
-        pdf_filename = source_path.stem + ".pdf"
-
-        # 変換済みPDFディレクトリをチェック
-        converted_pdf_path = Path("data/converted_pdfs") / pdf_filename
-        if converted_pdf_path.exists():
-            logger.info(f"Using converted PDF: {converted_pdf_path}")
-            return converted_pdf_path
-
-        # static/pdfsディレクトリもチェック
-        static_pdf_path = Path("static/pdfs") / pdf_filename
-        if static_pdf_path.exists():
-            logger.info(f"Using static converted PDF: {static_pdf_path}")
-            return static_pdf_path
 
     # Supabase Storageから一時ディレクトリにダウンロード
     if vector_store and vector_store.provider == 'supabase':
