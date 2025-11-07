@@ -62,10 +62,10 @@ def get_pdf_path(source_file: str, vector_store) -> Optional[Path]:
     office_extensions = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt']
 
     # Office形式（Word/Excel/PowerPoint）の場合は変換PDFを優先
-    if source_path.suffix.lower() in office_extensions:
-        # 拡張子を.pdfに変更
-        pdf_filename = source_path.stem + ".pdf"
+    is_office_file = source_path.suffix.lower() in office_extensions
+    pdf_filename = source_path.stem + ".pdf" if is_office_file else source_file
 
+    if is_office_file:
         # 変換済みPDFディレクトリをチェック（優先度1）
         converted_pdf_path = Path("data/converted_pdfs") / pdf_filename
         if converted_pdf_path.exists():
@@ -79,10 +79,10 @@ def get_pdf_path(source_file: str, vector_store) -> Optional[Path]:
             return static_pdf_path
 
         # 変換PDFが見つからない場合は警告
-        logger.warning(f"Converted PDF not found for Office file: {source_file}")
+        logger.warning(f"Converted PDF not found locally for Office file: {source_file}")
 
     # 通常のPDF、またはOffice形式だが変換PDFがない場合
-    local_pdf_path = Path("data/uploaded_pdfs") / source_file
+    local_pdf_path = Path("data/uploaded_pdfs") / (pdf_filename if is_office_file else source_file)
 
     if local_pdf_path.exists():
         logger.info(f"Using local PDF: {local_pdf_path}")
@@ -93,22 +93,31 @@ def get_pdf_path(source_file: str, vector_store) -> Optional[Path]:
         try:
             temp_dir = Path(tempfile.gettempdir()) / "rag_pdf_cache"
             temp_dir.mkdir(exist_ok=True)
-            temp_pdf_path = temp_dir / source_file
+            temp_pdf_path = temp_dir / pdf_filename
 
             # 既にキャッシュされているかチェック
             if temp_pdf_path.exists():
                 logger.info(f"Using cached PDF: {temp_pdf_path}")
                 return temp_pdf_path
 
+            # Officeファイルの場合、変換PDFをダウンロード試行
+            download_filename = pdf_filename if is_office_file else source_file
+
             # Supabase Storageからダウンロード
-            success = vector_store.download_pdf_from_storage(source_file, str(temp_pdf_path))
+            success = vector_store.download_pdf_from_storage(download_filename, str(temp_pdf_path))
 
             if success and temp_pdf_path.exists():
-                logger.info(f"Downloaded PDF from Supabase Storage: {temp_pdf_path}")
+                logger.info(f"Downloaded PDF from Supabase Storage: {download_filename} -> {temp_pdf_path}")
                 return temp_pdf_path
-            else:
-                logger.error(f"Failed to download PDF from Supabase Storage: {source_file}")
+
+            # Officeファイルの変換PDFが見つからない場合、元ファイルをダウンロードできない
+            if is_office_file:
+                logger.error(f"Converted PDF not found in Supabase Storage: {download_filename}")
+                logger.error(f"Office file cannot be rendered directly: {source_file}")
                 return None
+
+            logger.error(f"Failed to download PDF from Supabase Storage: {download_filename}")
+            return None
 
         except Exception as e:
             logger.error(f"Error accessing PDF from Supabase Storage: {e}")
@@ -162,13 +171,29 @@ def create_pdf_annotations_pymupdf(
 
     try:
         doc = fitz.open(pdf_path)
-        logger.info(f"✅ PDF opened successfully: {len(doc)} pages")
+        total_pages = len(doc)
+        logger.info(f"✅ PDF opened successfully: {total_pages} pages")
 
         # 検索対象ページの決定
         if page_numbers is None:
-            page_numbers = list(range(1, len(doc) + 1))
+            page_numbers = list(range(1, total_pages + 1))
 
+        # ページ番号の範囲チェック
+        valid_page_numbers = []
         for page_num in page_numbers:
+            if 1 <= page_num <= total_pages:
+                valid_page_numbers.append(page_num)
+            else:
+                logger.warning(f"⚠️ Page {page_num} is out of range (PDF has {total_pages} pages) - skipping")
+
+        if not valid_page_numbers:
+            logger.warning(f"No valid page numbers to process (requested: {page_numbers}, available: 1-{total_pages})")
+            doc.close()
+            return []
+
+        logger.info(f"Processing {len(valid_page_numbers)} valid pages: {valid_page_numbers}")
+
+        for page_num in valid_page_numbers:
             try:
                 # ページ番号は1始まりだが、PyMuPDFは0始まり
                 page = doc[page_num - 1]
@@ -502,7 +527,24 @@ def create_pdf_annotations_hybrid(
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
+            total_pages = len(pdf.pages)
+            logger.info(f"📚 PDF has {total_pages} pages")
+
+            # ページ番号の範囲チェック
+            valid_page_numbers = []
             for page_num in page_numbers:
+                if 1 <= page_num <= total_pages:
+                    valid_page_numbers.append(page_num)
+                else:
+                    logger.warning(f"⚠️ Page {page_num} is out of range (PDF has {total_pages} pages) - skipping")
+
+            if not valid_page_numbers:
+                logger.warning(f"No valid page numbers to process (requested: {page_numbers}, available: 1-{total_pages})")
+                return []
+
+            logger.info(f"Processing {len(valid_page_numbers)} valid pages: {valid_page_numbers}")
+
+            for page_num in valid_page_numbers:
                 try:
                     page = pdf.pages[page_num - 1]
                     page_text = page.extract_text()
@@ -661,6 +703,13 @@ def extract_page_as_image(
             logger.error(f"Failed to get PDF path: {source_file}")
             return None
 
+        # ページ番号の範囲チェック
+        with pdfplumber.open(pdf_path) as pdf:
+            total_pages = len(pdf.pages)
+            if page_number < 1 or page_number > total_pages:
+                logger.warning(f"⚠️ Page {page_number} is out of range (PDF has {total_pages} pages)")
+                return None
+
         # PDFページを画像に変換（指定ページのみ）
         # page_numberは1始まりだが、first_pageとlast_pageも1始まりで指定
         logger.info(f"Converting page {page_number} of {source_file} to image (DPI: {dpi})")
@@ -731,8 +780,25 @@ def extract_multiple_pages(
             logger.error(f"Failed to get PDF path: {source_file}")
             return {page: None for page in page_numbers}
 
+        # ページ番号の範囲チェック
+        with pdfplumber.open(pdf_path) as pdf:
+            total_pages = len(pdf.pages)
+
+        # 有効なページ番号のみをフィルタリング
+        valid_pages = []
+        for page_num in page_numbers:
+            if 1 <= page_num <= total_pages:
+                valid_pages.append(page_num)
+            else:
+                logger.warning(f"⚠️ Page {page_num} is out of range (PDF has {total_pages} pages) - skipping")
+                results[page_num] = None
+
+        if not valid_pages:
+            logger.warning(f"No valid page numbers to process (requested: {page_numbers}, available: 1-{total_pages})")
+            return results
+
         # ページ番号でソート（効率的な抽出のため）
-        sorted_pages = sorted(page_numbers)
+        sorted_pages = sorted(valid_pages)
 
         logger.info(f"Converting {len(sorted_pages)} pages of {source_file} to images")
 
@@ -944,6 +1010,13 @@ def find_text_positions(
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
+            total_pages = len(pdf.pages)
+
+            # ページ番号の範囲チェック
+            if page_number < 1 or page_number > total_pages:
+                logger.warning(f"⚠️ Page {page_number} is out of range (PDF has {total_pages} pages)")
+                return []
+
             # ページ番号は1始まりだが、pdfplumberは0始まり
             page = pdf.pages[page_number - 1]
 
@@ -1130,6 +1203,13 @@ def extract_page_with_highlight(
 
         if search_terms:
             with pdfplumber.open(pdf_path) as pdf:
+                total_pages = len(pdf.pages)
+
+                # ページ番号の範囲チェック
+                if page_number < 1 or page_number > total_pages:
+                    logger.warning(f"⚠️ Page {page_number} is out of range (PDF has {total_pages} pages)")
+                    return None
+
                 page = pdf.pages[page_number - 1]
                 page_height = page.height
                 text_positions = find_text_positions(pdf_path, page_number, search_terms, _vision_analyzer, dpi)
@@ -1137,14 +1217,26 @@ def extract_page_with_highlight(
         else:
             logger.warning("⚠️ No search terms to highlight")
 
+        # ページ番号の範囲チェック（画像変換前にも確認）
+        if not search_terms:  # search_termsがある場合は上で既にチェック済み
+            with pdfplumber.open(pdf_path) as pdf:
+                total_pages = len(pdf.pages)
+                if page_number < 1 or page_number > total_pages:
+                    logger.warning(f"⚠️ Page {page_number} is out of range (PDF has {total_pages} pages)")
+                    return None
+
         # ページを画像に変換
-        images = convert_from_path(
-            str(pdf_path),
-            dpi=dpi,
-            first_page=page_number,
-            last_page=page_number,
-            fmt='png'
-        )
+        try:
+            images = convert_from_path(
+                str(pdf_path),
+                dpi=dpi,
+                first_page=page_number,
+                last_page=page_number,
+                fmt='png'
+            )
+        except Exception as e:
+            logger.error(f"Error converting page {page_number} to image: {e}")
+            return None
 
         if not images or len(images) == 0:
             logger.error(f"No image generated for page {page_number} of {source_file}")
