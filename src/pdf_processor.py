@@ -617,26 +617,34 @@ class PDFProcessor:
                         continue
 
             # 3. ページ全体を画像化（フローチャート等のベクターグラフィックス対応）
-            # 条件: 埋め込み画像も複雑な表も抽出されなかった場合
-            if len(images) == 0 and not any(t.get("text") for t in table_markdowns if t.get("text", "").strip()):
+            # まず、ページに図形（ベクターグラフィックス）があるかチェック
+            graphics_count = 0
+            if hasattr(page, 'curves') and page.curves:
+                graphics_count += len(page.curves)
+            if hasattr(page, 'rects') and page.rects:
+                graphics_count += len(page.rects)
+            if hasattr(page, 'lines') and page.lines:
+                graphics_count += len(page.lines)
+
+            has_many_graphics = graphics_count > 10  # フローチャート等の判定閾値
+
+            # ページ全体を画像化する条件:
+            # 1. 埋め込み画像が無い、かつ
+            # 2. (複雑な表が無い、または、多くの図形要素がある場合)
+            #    → 図形が多い場合は、表として誤検出されたフローチャート等の可能性
+            has_complex_tables = any(t.get("text") for t in table_markdowns if t.get("text", "").strip())
+            should_capture_full_page = len(images) == 0 and (not has_complex_tables or has_many_graphics)
+
+            if should_capture_full_page:
                 # ページに何らかのコンテンツがあるかチェック
                 page_text = page.extract_text()
                 has_content = page_text and len(page_text.strip()) > 50  # 最低50文字
 
-                # pdfplumberのページオブジェクトは図形情報も持っている
-                # curves, rects, linesなどのプロパティで図形の有無を確認
-                has_graphics = False
-                if hasattr(page, 'curves') and page.curves:
-                    has_graphics = True
-                elif hasattr(page, 'rects') and page.rects:
-                    has_graphics = True
-                elif hasattr(page, 'lines') and page.lines:
-                    has_graphics = True
-
                 # コンテンツまたは図形があれば、ページ全体を画像化
-                if has_content or has_graphics:
+                if has_content or has_many_graphics:
                     try:
-                        logger.info(f"No images/tables found on page {page_num}, but has content/graphics. Capturing full page as image.")
+                        reason = "high graphics density (flowchart/diagram)" if has_many_graphics else "text content"
+                        logger.info(f"Capturing page {page_num} as full image due to {reason} (graphics_count={graphics_count})")
 
                         # ページ全体を画像化
                         im = page.to_image(resolution=150)
