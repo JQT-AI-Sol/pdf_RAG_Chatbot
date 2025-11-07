@@ -305,6 +305,22 @@ def process_documents(uploaded_files, category):
                     doc_result['metadata']['original_file_name'] = uploaded_file.name
                     logging.info(f"   Converted PDF path saved: {converted_pdf_path}")
 
+                    # ⚠️ 重要：source_fileを元のファイル名に統一
+                    # PDF変換した場合、プロセッサは.pdfファイル名を使うが、
+                    # DBには元のファイル名(.xlsx, .docx等)で保存する必要がある
+                    original_filename = uploaded_file.name
+                    doc_result['source_file'] = original_filename
+
+                    # すべてのtext_chunksのsource_fileを更新
+                    for chunk in doc_result.get('text_chunks', []):
+                        chunk['source_file'] = original_filename
+
+                    # すべてのimagesのsource_fileを更新
+                    for image in doc_result.get('images', []):
+                        image['source_file'] = original_filename
+
+                    logging.info(f"   ✅ source_file corrected: {Path(processing_path).name} → {original_filename}")
+
                 logging.info(f"Document processing completed for {uploaded_file.name}: {len(doc_result.get('text_chunks', []))} text chunks, {len(doc_result.get('images', []))} images")
             except Exception as e:
                 error_msg = f"ドキュメント処理中にエラーが発生しました: {str(e)}"

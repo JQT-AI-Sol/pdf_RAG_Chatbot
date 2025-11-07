@@ -219,10 +219,18 @@ class VectorStore:
 
                 if Path(local_image_path).exists():
                     try:
-                        # Storageパスを生成（category/filename形式）
+                        # Storageパスを生成（URL-safe形式）
+                        # 日本語を含むカテゴリー名・ファイル名はSupabase Storageで使えないため、
+                        # ハッシュベースのパスを使用
                         category = img_data.get('category', 'uncategorized')
                         filename = Path(local_image_path).name
-                        storage_path = f"{category}/{filename}"
+
+                        # カテゴリーとファイル名をURL-safeにエンコード
+                        # さらにハッシュを付けてユニーク性を保証
+                        category_hash = hashlib.md5(category.encode('utf-8')).hexdigest()[:8]
+                        file_ext = Path(filename).suffix
+                        file_hash = hashlib.md5(filename.encode('utf-8')).hexdigest()[:16]
+                        storage_path = f"cat_{category_hash}/img_{file_hash}{file_ext}"
 
                         # 画像ファイルをアップロード
                         with open(local_image_path, 'rb') as f:
