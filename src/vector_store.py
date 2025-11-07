@@ -361,13 +361,18 @@ class VectorStore:
                 logger.info(f"🔍 DEBUG: First 10 elements of query embedding: {query_embedding[:10]}")
 
                 # RPCパラメータを準備
+                # デバッグ用：マッチングシステムの場合は閾値を一時的に下げる
+                test_threshold = 0.0 if category == 'マッチングシステム' else self.match_threshold
+
                 rpc_params = {
                     'query_embedding': query_embedding,  # List[float]のまま渡す（Supabaseが自動変換）
-                    'match_threshold': self.match_threshold,
+                    'match_threshold': test_threshold,
                     'match_count': top_k,
                     'filter_category': category
                 }
                 logger.info(f"🔍 DEBUG: RPC parameters: match_threshold={rpc_params['match_threshold']}, match_count={rpc_params['match_count']}, filter_category={rpc_params['filter_category']}")
+                if category == 'マッチングシステム':
+                    logger.warning(f"⚠️ DEBUG MODE: Temporarily lowered threshold to {test_threshold} for マッチングシステム")
 
                 response = self.client.rpc('match_text_chunks', rpc_params).execute()
 
@@ -385,6 +390,11 @@ class VectorStore:
                     logger.info(f"Supabase text result - Keys: {list(response.data[0].keys())}")
                     logger.info(f"Supabase text result - Sample data: source_file={response.data[0].get('source_file')}, page={response.data[0].get('page_number')}, category={response.data[0].get('category')}")
                     logger.info(f"🔍 DEBUG: Sample similarity/distance: similarity={response.data[0].get('similarity')}, distance={response.data[0].get('distance')}")
+
+                    # マッチングシステムの場合、全結果の類似度を表示
+                    if category == 'マッチングシステム':
+                        similarities = [row.get('similarity', 0) for row in response.data[:10]]
+                        logger.warning(f"🔍 DEBUG: Top 10 similarities for マッチングシステム: {similarities}")
                 else:
                     logger.warning("⚠️ No text results returned from Supabase RPC")
                     logger.warning(f"⚠️ Query was for category='{category}' with {count_response.count if category else 'unknown'} chunks in DB")
