@@ -605,6 +605,14 @@ class VectorStore:
             # テキスト検索
             if search_type in ['text', 'both']:
                 logger.info(f"Calling match_text_chunks with category={category}, top_k={top_k}, threshold={self.match_threshold}")
+
+                # 🔍 デバッグ: query_embeddingを確認
+                logger.info(f"🔍 DEBUG: query_embedding type={type(query_embedding)}, len={len(query_embedding) if query_embedding else 0}")
+                if query_embedding and len(query_embedding) > 0:
+                    logger.info(f"🔍 DEBUG: First 3 values: {query_embedding[:3]}")
+                else:
+                    logger.error(f"❌ DEBUG: query_embedding is empty or None!")
+
                 # RPCパラメータを準備
                 rpc_params = {
                     'query_embedding': query_embedding,  # List[float]のまま渡す（Supabaseが自動変換）
@@ -612,6 +620,8 @@ class VectorStore:
                     'match_count': top_k,
                     'filter_category': category
                 }
+
+                logger.info(f"🔍 DEBUG: RPC params prepared - threshold={self.match_threshold}, count={top_k}, category={category}")
 
                 response = self.client.rpc('match_text_chunks', rpc_params).execute()
 

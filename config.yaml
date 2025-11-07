@@ -30,7 +30,7 @@ vector_store:
     table_name_text: "pdf_text_chunks"
     table_name_images: "pdf_image_contents"
     table_name_pdfs: "registered_pdfs"
-    match_threshold: 0.4  # 類似度閾値（画像検索でも結果を得やすく調整）
+    match_threshold: 0.1  # 類似度閾値（デバッグ用に一時的に下げる）
     storage_bucket: "pdf-images"  # Supabase Storage バケット名（画像用）
     pdf_storage_bucket: "pdf-files"  # Supabase Storage バケット名（PDF用）
 
