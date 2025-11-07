@@ -133,15 +133,17 @@ class RAGEngine:
             import io
 
             # Supabase Storage URLの場合（category/filename形式）
+            logger.info(f"📸 _encode_image_to_base64: image_path={image_path}, exists={Path(image_path).exists()}, has_slash={'/' in image_path}")
             if not Path(image_path).exists() and '/' in image_path:
                 # Supabase Storageから画像をダウンロード
                 try:
-                    logger.debug(f"Downloading image from Supabase Storage: {image_path}")
+                    logger.info(f"📸 _encode_image_to_base64: Downloading from Supabase Storage: {image_path}")
                     storage_bucket = self.config.get('vector_store', {}).get('supabase', {}).get('storage_bucket', 'pdf-images')
 
                     # vector_storeインスタンスを取得（既に初期化済みのはず）
                     if hasattr(self, 'vector_store') and hasattr(self.vector_store, 'client'):
                         response = self.vector_store.client.storage.from_(storage_bucket).download(image_path)
+                        logger.info(f"📸 _encode_image_to_base64: Successfully downloaded and encoded image from Storage")
                         return base64.b64encode(response).decode("utf-8")
                     else:
                         logger.error(f"Vector store client not available for Storage download")
@@ -633,17 +635,24 @@ class RAGEngine:
 
         # ベクトル検索で取得した画像を追加（役割を明示）
         remaining_slots = 5 - len(uploaded_images) if uploaded_images else 5
+        logger.info(f"📸 OpenAI: Processing {len(image_data_list)} images (remaining_slots={remaining_slots})")
         if image_data_list and remaining_slots > 0:
             content_parts.append({
                 "type": "text",
                 "text": "\n\n━━━ 以下、参考コンテキストとして検索された資料の画像 ━━━"
             })
             for img_data in image_data_list[:remaining_slots]:
-                base64_image = self._encode_image_to_base64(img_data["path"])
-                content_parts.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
-                })
+                img_path = img_data["path"]
+                logger.info(f"📸 OpenAI: Encoding image: {img_path}")
+                try:
+                    base64_image = self._encode_image_to_base64(img_path)
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                    })
+                    logger.info(f"📸 OpenAI: Successfully added image")
+                except Exception as e:
+                    logger.error(f"📸 OpenAI: Failed to encode image {img_path}: {e}", exc_info=True)
 
         messages.append(HumanMessage(content=content_parts))
 
