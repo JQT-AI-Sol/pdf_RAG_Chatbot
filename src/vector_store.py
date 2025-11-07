@@ -357,25 +357,37 @@ class VectorStore:
             if search_type in ['text', 'both']:
                 logger.info(f"Calling match_text_chunks with category={category}, top_k={top_k}, threshold={self.match_threshold}")
                 logger.info(f"🔍 DEBUG: Embedding dimension: {len(query_embedding)}")
+                logger.info(f"🔍 DEBUG: Embedding type: {type(query_embedding)}")
+                logger.info(f"🔍 DEBUG: First 10 elements of query embedding: {query_embedding[:10]}")
 
-                response = self.client.rpc(
-                    'match_text_chunks',
-                    {
-                        'query_embedding': query_embedding,  # List[float]のまま渡す（Supabaseが自動変換）
-                        'match_threshold': self.match_threshold,
-                        'match_count': top_k,
-                        'filter_category': category
-                    }
-                ).execute()
+                # RPCパラメータを準備
+                rpc_params = {
+                    'query_embedding': query_embedding,  # List[float]のまま渡す（Supabaseが自動変換）
+                    'match_threshold': self.match_threshold,
+                    'match_count': top_k,
+                    'filter_category': category
+                }
+                logger.info(f"🔍 DEBUG: RPC parameters: match_threshold={rpc_params['match_threshold']}, match_count={rpc_params['match_count']}, filter_category={rpc_params['filter_category']}")
+
+                response = self.client.rpc('match_text_chunks', rpc_params).execute()
 
                 logger.info(f"Text search response received: {len(response.data) if response.data else 0} results")
+
+                # デバッグ: レスポンスオブジェクトの詳細
+                logger.info(f"🔍 DEBUG: Response type: {type(response)}")
+                logger.info(f"🔍 DEBUG: Response.data type: {type(response.data) if hasattr(response, 'data') else 'no data attr'}")
+                if response.data is not None:
+                    logger.info(f"🔍 DEBUG: Response.data is empty list: {response.data == []}")
+                    logger.info(f"🔍 DEBUG: Response.data length: {len(response.data)}")
 
                 # デバッグ: 実際のレスポンスを確認
                 if response.data and len(response.data) > 0:
                     logger.info(f"Supabase text result - Keys: {list(response.data[0].keys())}")
                     logger.info(f"Supabase text result - Sample data: source_file={response.data[0].get('source_file')}, page={response.data[0].get('page_number')}, category={response.data[0].get('category')}")
+                    logger.info(f"🔍 DEBUG: Sample similarity/distance: similarity={response.data[0].get('similarity')}, distance={response.data[0].get('distance')}")
                 else:
-                    logger.warning("No text results returned from Supabase RPC")
+                    logger.warning("⚠️ No text results returned from Supabase RPC")
+                    logger.warning(f"⚠️ Query was for category='{category}' with {count_response.count if category else 'unknown'} chunks in DB")
 
                 if response.data:
                     results['text'] = [
