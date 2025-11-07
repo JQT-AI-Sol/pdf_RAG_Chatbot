@@ -153,13 +153,10 @@ class VectorStore:
 
             records = []
             for chunk, embedding in zip(chunks, embeddings):
-                # pgvector形式に変換: [0.1,0.2,0.3] (カンマ区切り、スペースなし)
-                embedding_str = f"[{','.join(map(str, embedding))}]"
-
                 records.append({
                     'id': f"text_{uuid.uuid4().hex[:16]}",
                     'content': chunk['text'],
-                    'embedding': embedding_str,  # 文字列形式でvector型に変換
+                    'embedding': embedding,  # List[float]のまま渡す（Supabaseが自動変換）
                     'source_file': chunk['source_file'],
                     'page_number': chunk['page_number'],
                     'category': chunk['category'],
@@ -272,13 +269,10 @@ class VectorStore:
                     logger.warning(f"Image file not found: {local_image_path}")
                     storage_path = local_image_path
 
-                # pgvector形式に変換: [0.1,0.2,0.3] (カンマ区切り、スペースなし)
-                embedding_str = f"[{','.join(map(str, embedding))}]"
-
                 records.append({
                     'id': image_id,
                     'content': img_data.get('description', ''),
-                    'embedding': embedding_str,  # 文字列形式でvector型に変換
+                    'embedding': embedding,  # List[float]のまま渡す（Supabaseが自動変換）
                     'source_file': img_data.get('source_file', ''),
                     'page_number': img_data.get('page_number', 0),
                     'category': img_data.get('category', ''),
@@ -364,13 +358,10 @@ class VectorStore:
                 logger.info(f"Calling match_text_chunks with category={category}, top_k={top_k}, threshold={self.match_threshold}")
                 logger.info(f"🔍 DEBUG: Embedding dimension: {len(query_embedding)}")
 
-                # pgvector形式に変換
-                query_embedding_str = f"[{','.join(map(str, query_embedding))}]"
-
                 response = self.client.rpc(
                     'match_text_chunks',
                     {
-                        'query_embedding': query_embedding_str,  # 文字列形式でvector型に変換
+                        'query_embedding': query_embedding,  # List[float]のまま渡す（Supabaseが自動変換）
                         'match_threshold': self.match_threshold,
                         'match_count': top_k,
                         'filter_category': category
@@ -418,13 +409,10 @@ class VectorStore:
 
                 logger.info(f"Calling match_image_contents with category={category}, top_k={top_k}, threshold={self.match_threshold}")
 
-                # pgvector形式に変換
-                query_embedding_str = f"[{','.join(map(str, query_embedding))}]"
-
                 response = self.client.rpc(
                     'match_image_contents',
                     {
-                        'query_embedding': query_embedding_str,  # 文字列形式でvector型に変換
+                        'query_embedding': query_embedding,  # List[float]のまま渡す（Supabaseが自動変換）
                         'match_threshold': self.match_threshold,
                         'match_count': top_k,
                         'filter_category': category
