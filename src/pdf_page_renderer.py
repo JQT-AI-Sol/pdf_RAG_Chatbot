@@ -337,12 +337,12 @@ def filter_sentences_by_embedding(
 
     try:
         # クエリのエンベディングを取得
-        query_embedding = rag_engine.embedding_model.embed_query(query)
+        query_embedding = rag_engine.embedder.embed_query(query)
 
         # 各文のエンベディングを計算
         sentence_embeddings = []
         for sent in sentences:
-            sent_embedding = rag_engine.embedding_model.embed_query(sent["text"])
+            sent_embedding = rag_engine.embedder.embed_query(sent["text"])
             sentence_embeddings.append(sent_embedding)
 
         # コサイン類似度を計算
