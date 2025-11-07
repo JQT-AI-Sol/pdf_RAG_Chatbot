@@ -7,6 +7,9 @@ import subprocess
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
+import pdfplumber
+from pptx import Presentation
+from docx import Document
 
 from src.pdf_processor import PDFProcessor
 from src.word_processor import WordProcessor
@@ -212,6 +215,49 @@ class DocumentProcessor:
         return self.text_processor.process_text_file(txt_path, category)
 
 
+def _get_office_page_count(office_path: Path) -> int:
+    """
+    Officeファイルのページ/スライド/シート数を取得
+
+    Args:
+        office_path: Officeファイルのパス
+
+    Returns:
+        int: ページ数（PowerPoint: スライド数、Word: ページ数概算、Excel: シート数）
+    """
+    suffix = office_path.suffix.lower()
+
+    try:
+        if suffix in ['.pptx', '.ppt']:
+            # PowerPoint: スライド数
+            prs = Presentation(office_path)
+            return len(prs.slides)
+
+        elif suffix in ['.docx', '.doc']:
+            # Word: セクション数で概算（正確なページ数は取得困難）
+            doc = Document(office_path)
+            # Wordの正確なページ数は取得が難しいので、段落数から推定
+            # 1ページあたり約30段落と仮定
+            paragraphs = len(doc.paragraphs)
+            estimated_pages = max(1, paragraphs // 30)
+            logger.info(f"   Word file: {paragraphs} paragraphs, estimated ~{estimated_pages} pages")
+            return estimated_pages
+
+        elif suffix in ['.xlsx', '.xls']:
+            # Excel: シート数
+            import openpyxl
+            wb = openpyxl.load_workbook(office_path, read_only=True)
+            return len(wb.sheetnames)
+
+        else:
+            logger.warning(f"Unknown Office file type: {suffix}")
+            return 0
+
+    except Exception as e:
+        logger.warning(f"Failed to get page count for {office_path}: {e}")
+        return 0
+
+
 def convert_office_to_pdf(
     office_path: str,
     output_dir: Optional[str] = None,
@@ -264,6 +310,9 @@ def convert_office_to_pdf(
             [
                 libreoffice_cmd,
                 '--headless',
+                '--norestore',  # 以前のセッションを復元しない
+                '--invisible',   # UIを完全に非表示
+                '--nologo',      # スプラッシュ画面を表示しない
                 '--convert-to', 'pdf',
                 '--outdir', str(output_dir),
                 str(office_path)
@@ -276,7 +325,22 @@ def convert_office_to_pdf(
 
         # 変換成功確認
         if output_path.exists():
-            logger.info(f"✅ PDF conversion successful: {output_path}")
+            # 元のファイルと変換後のPDFのページ数を比較
+            try:
+                original_pages = _get_office_page_count(office_path)
+                with pdfplumber.open(output_path) as pdf:
+                    pdf_pages = len(pdf.pages)
+
+                logger.info(f"✅ PDF conversion successful: {output_path}")
+                logger.info(f"   Original pages: {original_pages}, PDF pages: {pdf_pages}")
+
+                if original_pages != pdf_pages:
+                    logger.warning(f"⚠️ Page count mismatch! Original: {original_pages}, PDF: {pdf_pages}")
+                    logger.warning(f"   Some pages may have been skipped during conversion")
+                    logger.warning(f"   This may cause missing content in search results")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to verify page count: {e}")
+
             return output_path
         else:
             logger.error(f"❌ PDF file not created: {output_path}")
