@@ -30,6 +30,9 @@ class VectorStore:
         else:
             self._init_chromadb()
 
+        # BM25ハイブリッド検索用のトークナイザー初期化
+        self._init_tokenizer()
+
         logger.info(f"Vector store initialized with provider: {self.provider} (v1.1)")
 
     def _init_supabase(self):
@@ -124,6 +127,55 @@ class VectorStore:
         self.image_collection = self.client.get_or_create_collection(
             name=self.image_collection_name
         )
+
+    def _init_tokenizer(self):
+        """
+        BM25ハイブリッド検索用の日本語トークナイザー初期化
+        """
+        try:
+            import MeCab
+            self.tokenizer = MeCab.Tagger("-Owakati")
+            logger.info("MeCab tokenizer initialized for BM25 hybrid search")
+        except ImportError:
+            logger.warning("MeCab not available, using simple space-based tokenization as fallback")
+            self.tokenizer = None
+        except Exception as e:
+            logger.warning(f"Failed to initialize MeCab: {e}. Using simple tokenization as fallback")
+            self.tokenizer = None
+
+    def _tokenize(self, text: str) -> List[str]:
+        """
+        テキストをトークン化（日本語対応）
+
+        Args:
+            text: トークン化するテキスト
+
+        Returns:
+            list: トークンのリスト
+        """
+        if not text:
+            return []
+
+        if self.tokenizer:
+            # MeCabで分かち書き
+            try:
+                tokens = self.tokenizer.parse(text).strip().split()
+                return [token for token in tokens if len(token) > 1]  # 1文字のトークンは除外
+            except Exception as e:
+                logger.warning(f"MeCab tokenization failed: {e}, falling back to simple split")
+
+        # フォールバック: 簡易的な分かち書き
+        # 日本語の場合は文字単位、英語の場合はスペース区切り
+        tokens = []
+        for word in text.split():
+            if any('\u3000' <= c <= '\u9fff' for c in word):  # 日本語を含む場合
+                # 日本語は文字単位で分割（簡易的）
+                tokens.extend([c for c in word if c.strip()])
+            else:
+                # 英語はそのまま
+                tokens.append(word.lower())
+
+        return [token for token in tokens if len(token) > 1]
 
     def add_text_chunks(self, chunks: List[Dict[str, Any]], embeddings: List[List[float]]):
         """
@@ -321,23 +373,200 @@ class VectorStore:
             raise
 
     def search(self, query_embedding: List[float], category: Optional[str] = None,
-               top_k: int = 5, search_type: str = 'both') -> Dict[str, List[Dict[str, Any]]]:
+               top_k: int = 5, search_type: str = 'both', query_text: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
-        ベクトル検索を実行
+        ベクトル検索を実行（BM25ハイブリッド検索対応）
 
         Args:
             query_embedding: クエリのエンベディング
             category: 検索対象カテゴリー（Noneの場合は全カテゴリー）
             top_k: 取得する結果の数
             search_type: 検索タイプ ('text', 'image', 'both')
+            query_text: クエリテキスト（BM25ハイブリッド検索用、オプション）
 
         Returns:
             dict: 検索結果（テキストと画像）
         """
-        if self.provider == 'supabase':
-            return self._search_supabase(query_embedding, category, top_k, search_type)
+        # BM25ハイブリッド検索の有効化を確認
+        hybrid_config = self.config.get('hybrid_search', {})
+        use_hybrid = (
+            hybrid_config.get('enabled', False) and
+            query_text and
+            self.provider == 'supabase' and
+            search_type in ['text', 'both']
+        )
+
+        if use_hybrid:
+            logger.info("Using BM25 hybrid search for text results")
+            return self._hybrid_search_supabase(query_text, query_embedding, category, top_k, search_type)
         else:
-            return self._search_chromadb(query_embedding, category, top_k, search_type)
+            # 従来のベクトル検索のみ
+            if self.provider == 'supabase':
+                return self._search_supabase(query_embedding, category, top_k, search_type)
+            else:
+                return self._search_chromadb(query_embedding, category, top_k, search_type)
+
+    def _reciprocal_rank_fusion(self, vector_results: List[Dict], bm25_results: List[Dict],
+                               alpha: float = 0.7, k: int = 60) -> List[Dict]:
+        """
+        Reciprocal Rank Fusion (RRF) でベクトル検索とBM25の結果を統合
+
+        Args:
+            vector_results: ベクトル検索結果のリスト
+            bm25_results: BM25検索結果のリスト（スコア付き）
+            alpha: ベクトル検索の重み（0-1）、BM25の重みは1-alpha
+            k: RRFパラメータ（デフォルト60）
+
+        Returns:
+            list: 統合された検索結果（スコア順）
+        """
+        # IDでアクセスできるように辞書化
+        vector_dict = {r['id']: (i, r) for i, r in enumerate(vector_results)}
+        bm25_dict = {r['id']: (i, r) for i, r in enumerate(bm25_results)}
+
+        # 全てのユニークなIDを取得
+        all_ids = set(vector_dict.keys()) | set(bm25_dict.keys())
+
+        # RRFスコアを計算
+        fused_results = []
+        for doc_id in all_ids:
+            score = 0.0
+
+            # ベクトル検索のランクからスコア計算
+            if doc_id in vector_dict:
+                vector_rank, vector_result = vector_dict[doc_id]
+                score += alpha * (1.0 / (k + vector_rank + 1))
+                result_data = vector_result
+            else:
+                result_data = None
+
+            # BM25のランクからスコア計算
+            if doc_id in bm25_dict:
+                bm25_rank, bm25_result = bm25_dict[doc_id]
+                score += (1 - alpha) * (1.0 / (k + bm25_rank + 1))
+                if result_data is None:
+                    result_data = bm25_result
+
+            # 結果を追加
+            if result_data:
+                result_with_score = result_data.copy()
+                result_with_score['hybrid_score'] = score
+                fused_results.append(result_with_score)
+
+        # スコア順にソート
+        fused_results.sort(key=lambda x: x['hybrid_score'], reverse=True)
+
+        logger.debug(f"RRF fusion: {len(vector_results)} vector + {len(bm25_results)} BM25 → {len(fused_results)} merged results")
+        if fused_results:
+            top_scores = [r['hybrid_score'] for r in fused_results[:3]]
+            logger.info(f"Top 3 hybrid scores: {top_scores}")
+
+        return fused_results
+
+    def _hybrid_search_supabase(self, query_text: str, query_embedding: List[float],
+                               category: Optional[str], top_k: int, search_type: str) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        BM25 + ベクトル検索のハイブリッド検索（Supabase）
+
+        Args:
+            query_text: クエリテキスト
+            query_embedding: クエリのエンベディング
+            category: 検索対象カテゴリー
+            top_k: 最終的に返す結果の数
+            search_type: 検索タイプ ('text', 'image', 'both')
+
+        Returns:
+            dict: 検索結果（テキストと画像）
+        """
+        from rank_bm25 import BM25Okapi
+
+        results = {'text': [], 'images': []}
+
+        try:
+            # === 1. テキスト検索（ハイブリッド） ===
+            if search_type in ['text', 'both']:
+                # 1.1 全候補を取得（カテゴリーフィルタあり、thresholdなし）
+                query_builder = self.client.table(self.text_table).select('id, content, source_file, page_number, category')
+                if category:
+                    query_builder = query_builder.eq('category', category)
+
+                all_candidates_response = query_builder.execute()
+
+                if not all_candidates_response.data:
+                    logger.warning(f"No text candidates found for category: {category}")
+                else:
+                    all_candidates = all_candidates_response.data
+                    logger.info(f"Retrieved {len(all_candidates)} text candidates for hybrid search")
+
+                    # 1.2 ベクトル検索（上位候補を多めに取得）
+                    top_k_vector = min(top_k * 3, len(all_candidates))  # top_kの3倍（最大で全候補）
+                    vector_results_dict = self._search_supabase(
+                        query_embedding, category, top_k_vector, 'text'
+                    )
+                    vector_results = vector_results_dict.get('text', [])
+                    logger.info(f"Vector search returned {len(vector_results)} results")
+
+                    # 1.3 BM25検索
+                    # 候補のテキストをトークン化
+                    corpus = [candidate['content'] for candidate in all_candidates]
+                    tokenized_corpus = [self._tokenize(doc) for doc in corpus]
+
+                    # BM25インデックス構築
+                    bm25 = BM25Okapi(tokenized_corpus)
+
+                    # クエリをトークン化してBM25スコア計算
+                    tokenized_query = self._tokenize(query_text)
+                    bm25_scores = bm25.get_scores(tokenized_query)
+
+                    # スコア順にソート
+                    bm25_ranked_indices = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)
+
+                    # 上位候補を取得
+                    top_k_bm25 = min(top_k * 3, len(all_candidates))
+                    bm25_results = []
+                    for idx in bm25_ranked_indices[:top_k_bm25]:
+                        candidate = all_candidates[idx]
+                        bm25_results.append({
+                            'id': candidate['id'],
+                            'content': candidate['content'],
+                            'source_file': candidate['source_file'],
+                            'page_number': candidate['page_number'],
+                            'category': candidate['category'],
+                            'content_type': 'text',
+                            'bm25_score': float(bm25_scores[idx]),
+                            'metadata': {
+                                'source_file': candidate['source_file'],
+                                'page_number': candidate['page_number'],
+                                'category': candidate['category'],
+                                'content_type': 'text'
+                            }
+                        })
+
+                    logger.info(f"BM25 search returned {len(bm25_results)} results (top score: {bm25_results[0]['bm25_score'] if bm25_results else 0:.2f})")
+
+                    # 1.4 Reciprocal Rank Fusion (RRF)
+                    hybrid_config = self.config.get('hybrid_search', {})
+                    alpha = hybrid_config.get('alpha', 0.7)
+
+                    fused_results = self._reciprocal_rank_fusion(vector_results, bm25_results, alpha=alpha)
+
+                    # 上位top_k件を返す
+                    results['text'] = fused_results[:top_k]
+
+                    logger.info(f"Hybrid search completed: {len(results['text'])} final text results")
+
+            # === 2. 画像検索（従来のベクトル検索のみ） ===
+            if search_type in ['image', 'both']:
+                image_results_dict = self._search_supabase(query_embedding, category, top_k, 'image')
+                results['images'] = image_results_dict.get('images', [])
+
+        except Exception as e:
+            logger.error(f"Error during hybrid search: {e}", exc_info=True)
+            # エラー時は従来のベクトル検索にフォールバック
+            logger.warning("Falling back to vector-only search")
+            return self._search_supabase(query_embedding, category, top_k, search_type)
+
+        return results
 
     def _search_supabase(self, query_embedding: List[float], category: Optional[str],
                         top_k: int, search_type: str) -> Dict[str, List[Dict[str, Any]]]:

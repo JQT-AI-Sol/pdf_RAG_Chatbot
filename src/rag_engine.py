@@ -284,6 +284,7 @@ class RAGEngine:
                 category=category,
                 top_k=top_k_initial,
                 search_type="both",
+                query_text=question  # BM25ハイブリッド検索用
             )
 
             # 3. Reranking（有効な場合）
@@ -522,6 +523,7 @@ class RAGEngine:
                 category=category,
                 top_k=top_k_initial,
                 search_type="both",
+                query_text=question  # BM25ハイブリッド検索用
             )
 
             # 3. Reranking（有効な場合）
