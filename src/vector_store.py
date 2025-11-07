@@ -899,6 +899,13 @@ class VectorStore:
                 embedding = text_with_emb.data[0].get('embedding')
                 if embedding:
                     logger.info(f"✅ DEBUG: Embedding exists, dimension: {len(embedding)}")
+                    logger.info(f"🔍 DEBUG: Embedding type: {type(embedding)}")
+                    logger.info(f"🔍 DEBUG: First 5 elements: {embedding[:5]}")
+
+                    # 異常な次元数の場合は警告
+                    if len(embedding) != 3072:
+                        logger.error(f"❌ DEBUG: ABNORMAL embedding dimension! Expected 3072, got {len(embedding)}")
+                        logger.error(f"   This will cause vector search to fail!")
                 else:
                     logger.error(f"❌ DEBUG: Embedding field is NULL!")
 
