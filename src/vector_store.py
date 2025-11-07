@@ -837,3 +837,73 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Error downloading PDF from Supabase Storage: {e}")
             return False
+
+    def debug_inspect_data(self, category: str, limit: int = 5) -> Dict[str, Any]:
+        """
+        デバッグ用: カテゴリーのデータを確認
+
+        Args:
+            category: カテゴリー名
+            limit: 取得する件数
+
+        Returns:
+            dict: サンプルデータ
+        """
+        if self.provider != 'supabase':
+            logger.warning("debug_inspect_data is only supported for Supabase")
+            return {}
+
+        try:
+            result = {
+                'category': category,
+                'text_chunks': [],
+                'images': []
+            }
+
+            # テキストチャンクのサンプル取得
+            text_response = self.client.table(self.text_table)\
+                .select('id, content, source_file, page_number, category')\
+                .eq('category', category)\
+                .limit(limit)\
+                .execute()
+
+            if text_response.data:
+                result['text_chunks'] = text_response.data
+                logger.info(f"📊 DEBUG: Sample text chunks for '{category}':")
+                for i, chunk in enumerate(text_response.data[:3], 1):
+                    logger.info(f"  [{i}] {chunk['source_file']} (page {chunk['page_number']})")
+                    logger.info(f"      Content preview: {chunk['content'][:100]}...")
+
+            # 画像のサンプル取得
+            image_response = self.client.table(self.image_table)\
+                .select('id, content, source_file, page_number, category, content_type')\
+                .eq('category', category)\
+                .limit(limit)\
+                .execute()
+
+            if image_response.data:
+                result['images'] = image_response.data
+                logger.info(f"📊 DEBUG: Sample images for '{category}':")
+                for i, img in enumerate(image_response.data[:3], 1):
+                    logger.info(f"  [{i}] {img['source_file']} (page {img['page_number']}, type: {img.get('content_type', 'image')})")
+                    logger.info(f"      Description preview: {img['content'][:100]}...")
+
+            # embeddingフィールドが存在するか確認
+            text_with_emb = self.client.table(self.text_table)\
+                .select('id, embedding')\
+                .eq('category', category)\
+                .limit(1)\
+                .execute()
+
+            if text_with_emb.data and len(text_with_emb.data) > 0:
+                embedding = text_with_emb.data[0].get('embedding')
+                if embedding:
+                    logger.info(f"✅ DEBUG: Embedding exists, dimension: {len(embedding)}")
+                else:
+                    logger.error(f"❌ DEBUG: Embedding field is NULL!")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error inspecting data: {e}")
+            return {}

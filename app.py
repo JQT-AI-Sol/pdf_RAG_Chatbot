@@ -221,6 +221,15 @@ def sidebar():
         st.session_state.chat_history = []
         st.rerun()
 
+    # デバッグボタン（開発用）
+    if st.sidebar.button("🔍 DBデータ確認（デバッグ）", type="secondary"):
+        if st.session_state.selected_category != "全カテゴリー":
+            logging.info(f"=== DEBUG: Inspecting data for category '{st.session_state.selected_category}' ===")
+            st.session_state.vector_store.debug_inspect_data(st.session_state.selected_category)
+            st.sidebar.success(f"ログを確認してください（カテゴリー: {st.session_state.selected_category}）")
+        else:
+            st.sidebar.warning("カテゴリーを選択してください")
+
 
 def process_documents(uploaded_files, category):
     """ドキュメントファイル（PDF、Word、Excel）を処理"""
