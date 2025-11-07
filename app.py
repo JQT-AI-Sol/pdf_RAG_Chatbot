@@ -147,14 +147,27 @@ def sidebar():
         st.sidebar.error(f"カテゴリー取得エラー: {str(e)}")
         categories = []
 
-    # 登録済みPDF管理
+    # 登録済みドキュメント管理
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📄 登録済みPDF管理")
+    st.sidebar.subheader("📁 登録済みドキュメント")
 
     registered_pdfs = st.session_state.pdf_manager.get_registered_pdfs()
     if registered_pdfs:
         for pdf in registered_pdfs:
-            with st.sidebar.expander(f"📄 {pdf['source_file']}", expanded=False):
+            # ファイル拡張子に応じたアイコンを選択
+            file_ext = Path(pdf['source_file']).suffix.lower()
+            if file_ext in ['.xlsx', '.xls']:
+                icon = "📊"
+            elif file_ext in ['.docx', '.doc']:
+                icon = "📝"
+            elif file_ext in ['.pptx', '.ppt']:
+                icon = "📽️"
+            elif file_ext == '.txt':
+                icon = "📄"
+            else:
+                icon = "📄"  # PDF or other
+
+            with st.sidebar.expander(f"{icon} {pdf['source_file']}", expanded=False):
                 st.write(f"**カテゴリー**: {pdf['category']}")
                 st.write(f"**テキストデータ**: {pdf['text_count']} 件")
                 st.write(f"**画像データ**: {pdf['image_count']} 件")
@@ -165,23 +178,41 @@ def sidebar():
 
                 with col1:
                     # 閲覧ボタン
-                    pdf_path = Path("data/uploaded_pdfs") / pdf['source_file']
-                    # Supabase Storageを使用している場合はローカルファイルチェックをスキップ
-                    if st.session_state.vector_store.provider == 'supabase' or pdf_path.exists():
-                        show_pdf_link(pdf_path, pdf['source_file'], key_suffix="sidebar")
+                    # Office形式の場合は変換PDFを表示
+                    source_file_path = Path(pdf['source_file'])
+                    file_ext = source_file_path.suffix.lower()
+
+                    if file_ext in ['.xlsx', '.xls', '.docx', '.doc', '.pptx', '.ppt']:
+                        # 変換PDFのパスを構築
+                        converted_pdf_name = source_file_path.stem + ".pdf"
+                        converted_pdf_path = Path("data/converted_pdfs") / converted_pdf_name
+                        static_pdf_path = Path("static/pdfs") / converted_pdf_name
+
+                        # 変換PDFが存在するかチェック
+                        if st.session_state.vector_store.provider == 'supabase' or static_pdf_path.exists() or converted_pdf_path.exists():
+                            # 変換PDFを表示
+                            display_path = static_pdf_path if static_pdf_path.exists() else converted_pdf_path
+                            show_pdf_link(display_path, converted_pdf_name, key_suffix="sidebar")
+                        else:
+                            st.warning(f"変換PDF未作成: {pdf['source_file']}")
                     else:
-                        st.error(f"PDFファイルが見つかりません: {pdf['source_file']}")
+                        # PDFやテキストファイルはそのまま表示
+                        pdf_path = Path("data/uploaded_pdfs") / pdf['source_file']
+                        if st.session_state.vector_store.provider == 'supabase' or pdf_path.exists():
+                            show_pdf_link(pdf_path, pdf['source_file'], key_suffix="sidebar")
+                        else:
+                            st.error(f"ファイルが見つかりません: {pdf['source_file']}")
 
                 with col2:
                     # 削除ボタン（アイコンのみ）
                     delete_key = f"delete_{pdf['source_file']}"
-                    if st.button("🗑️", key=delete_key, type="secondary", use_container_width=True, help="PDFを削除する"):
+                    if st.button("🗑️", key=delete_key, type="secondary", use_container_width=True, help="ドキュメントを削除"):
                         # 削除確認用のセッション状態を設定
                         st.session_state.delete_target = pdf['source_file']
                         st.session_state.show_delete_confirm = True
                         st.rerun()
     else:
-        st.sidebar.info("登録済みPDFがありません")
+        st.sidebar.info("登録済みドキュメントがありません")
 
     # チャット設定
     st.sidebar.markdown("---")
