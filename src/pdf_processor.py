@@ -202,7 +202,9 @@ class PDFProcessor:
                     try:
                         page_result = future.result()
                         page_results[page_num] = page_result
-                        logger.info(f"Completed processing page {page_num}/{page_count}")
+                        # 10ページごと、または最終ページでログ出力
+                        if page_num % 10 == 0 or page_num == page_count:
+                            logger.info(f"Completed processing page {page_num}/{page_count}")
                     except Exception as e:
                         logger.error(f"Error in page {page_num}: {e}")
                         page_results[page_num] = {"text_chunks": [], "images": [], "table_markdowns": []}

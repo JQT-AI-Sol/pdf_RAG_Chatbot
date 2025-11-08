@@ -96,7 +96,9 @@ class PowerPointProcessor:
             image_index = 0
 
             for slide_num, slide in enumerate(prs.slides, start=1):
-                logger.info(f"Processing slide {slide_num}/{len(prs.slides)}")
+                # 10スライドごと、または最終スライドでログ出力
+                if slide_num % 10 == 0 or slide_num == len(prs.slides):
+                    logger.info(f"Processing slide {slide_num}/{len(prs.slides)}")
 
                 slide_text = []
 

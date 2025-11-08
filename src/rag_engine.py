@@ -133,17 +133,17 @@ class RAGEngine:
             import io
 
             # Supabase Storage URLの場合（category/filename形式）
-            logger.info(f"📸 _encode_image_to_base64: image_path={image_path}, exists={Path(image_path).exists()}, has_slash={'/' in image_path}")
+            logger.debug(f"_encode_image_to_base64: image_path={image_path}, exists={Path(image_path).exists()}")
             if not Path(image_path).exists() and '/' in image_path:
                 # Supabase Storageから画像をダウンロード
                 try:
-                    logger.info(f"📸 _encode_image_to_base64: Downloading from Supabase Storage: {image_path}")
+                    logger.debug(f"Downloading from Supabase Storage: {image_path}")
                     storage_bucket = self.config.get('vector_store', {}).get('supabase', {}).get('storage_bucket', 'pdf-images')
 
                     # vector_storeインスタンスを取得（既に初期化済みのはず）
                     if hasattr(self, 'vector_store') and hasattr(self.vector_store, 'client'):
                         response = self.vector_store.client.storage.from_(storage_bucket).download(image_path)
-                        logger.info(f"📸 _encode_image_to_base64: Successfully downloaded and encoded image from Storage")
+                        logger.debug(f"Successfully downloaded image from Storage: {image_path}")
                         return base64.b64encode(response).decode("utf-8")
                     else:
                         logger.error(f"Vector store client not available for Storage download")
@@ -323,7 +323,7 @@ class RAGEngine:
                     logger.debug(f"Added image to image_data_list: {image_path}")
 
             context_text = "\n\n".join(context_parts)
-            logger.info(f"📸 image_data_list contains {len(image_data_list)} images")
+            logger.debug(f"image_data_list contains {len(image_data_list)} images")
 
             # 5. LLMで回答生成
             if model_type == "openai":
@@ -460,23 +460,23 @@ class RAGEngine:
                 content_parts.append(image)
 
         # ベクトル検索で取得した画像を追加
-        logger.info(f"📸 Gemini: Processing {len(image_data_list)} images (remaining_slots={remaining_slots})")
+        logger.info(f"Processing {len(image_data_list)} images for Gemini (slots available: {remaining_slots})")
         if image_data_list and remaining_slots > 0:
             for img_data in image_data_list[:remaining_slots]:
                 img_path_str = img_data["path"]
                 img_path = Path(img_path_str)
-                logger.debug(f"📸 Gemini: Processing image {img_path_str}")
+                logger.debug(f"Processing image {img_path_str}")
 
                 # ローカルファイルが存在する場合
                 if img_path.exists():
-                    logger.info(f"📸 Gemini: Loading local image: {img_path_str}")
+                    logger.debug(f"Loading local image: {img_path_str}")
                     image = Image.open(img_path)
                     content_parts.append(image)
                 # Supabase Storage URLの場合
                 elif '/' in img_path_str:
                     try:
                         # Storageから画像をダウンロード
-                        logger.info(f"📸 Gemini: Downloading image from Storage: {img_path_str}")
+                        logger.debug(f"Downloading image from Storage: {img_path_str}")
                         storage_bucket = self.config.get('vector_store', {}).get('supabase', {}).get('storage_bucket', 'pdf-images')
 
                         if hasattr(self, 'vector_store') and hasattr(self.vector_store, 'client'):
@@ -484,7 +484,7 @@ class RAGEngine:
                             from io import BytesIO
                             image = Image.open(BytesIO(image_bytes))
                             content_parts.append(image)
-                            logger.info(f"📸 Gemini: Successfully added image from Storage")
+                            logger.debug(f"Successfully added image from Storage")
                         else:
                             logger.warning(f"Cannot download image from Storage: vector_store not initialized")
                     except Exception as e:
@@ -569,7 +569,7 @@ class RAGEngine:
                     logger.debug(f"Added image to image_data_list: {image_path}")
 
             context_text = "\n\n".join(context_parts)
-            logger.info(f"📸 image_data_list contains {len(image_data_list)} images")
+            logger.debug(f"image_data_list contains {len(image_data_list)} images")
 
             # 最初にコンテキスト情報を返す
             yield {
@@ -635,7 +635,7 @@ class RAGEngine:
 
         # ベクトル検索で取得した画像を追加（役割を明示）
         remaining_slots = 5 - len(uploaded_images) if uploaded_images else 5
-        logger.info(f"📸 OpenAI: Processing {len(image_data_list)} images (remaining_slots={remaining_slots})")
+        logger.info(f"Processing {len(image_data_list)} images for OpenAI (slots available: {remaining_slots})")
         if image_data_list and remaining_slots > 0:
             content_parts.append({
                 "type": "text",
@@ -643,16 +643,16 @@ class RAGEngine:
             })
             for img_data in image_data_list[:remaining_slots]:
                 img_path = img_data["path"]
-                logger.info(f"📸 OpenAI: Encoding image: {img_path}")
+                logger.debug(f"Encoding image: {img_path}")
                 try:
                     base64_image = self._encode_image_to_base64(img_path)
                     content_parts.append({
                         "type": "image_url",
                         "image_url": {"url": f"data:image/png;base64,{base64_image}"}
                     })
-                    logger.info(f"📸 OpenAI: Successfully added image")
+                    logger.debug(f"Successfully added image")
                 except Exception as e:
-                    logger.error(f"📸 OpenAI: Failed to encode image {img_path}: {e}", exc_info=True)
+                    logger.error(f"Failed to encode image {img_path}: {e}", exc_info=True)
 
         messages.append(HumanMessage(content=content_parts))
 
@@ -720,23 +720,23 @@ class RAGEngine:
                 content_parts.append(image)
 
         # ベクトル検索で取得した画像を追加
-        logger.info(f"📸 Gemini (streaming): Processing {len(image_data_list)} images (remaining_slots={remaining_slots})")
+        logger.info(f"Processing {len(image_data_list)} images for Gemini streaming (slots available: {remaining_slots})")
         if image_data_list and remaining_slots > 0:
             for img_data in image_data_list[:remaining_slots]:
                 img_path_str = img_data["path"]
                 img_path = Path(img_path_str)
-                logger.debug(f"📸 Gemini (streaming): Processing image {img_path_str}")
+                logger.debug(f"Processing image {img_path_str}")
 
                 # ローカルファイルが存在する場合
                 if img_path.exists():
-                    logger.info(f"📸 Gemini (streaming): Loading local image: {img_path_str}")
+                    logger.debug(f"Loading local image: {img_path_str}")
                     image = Image.open(img_path)
                     content_parts.append(image)
                 # Supabase Storage URLの場合
                 elif '/' in img_path_str:
                     try:
                         # Storageから画像をダウンロード
-                        logger.info(f"📸 Gemini (streaming): Downloading image from Storage: {img_path_str}")
+                        logger.debug(f"Downloading image from Storage: {img_path_str}")
                         storage_bucket = self.config.get('vector_store', {}).get('supabase', {}).get('storage_bucket', 'pdf-images')
 
                         if hasattr(self, 'vector_store') and hasattr(self.vector_store, 'client'):
@@ -744,7 +744,7 @@ class RAGEngine:
                             from io import BytesIO
                             image = Image.open(BytesIO(image_bytes))
                             content_parts.append(image)
-                            logger.info(f"📸 Gemini (streaming): Successfully added image from Storage")
+                            logger.debug(f"Successfully added image from Storage")
                         else:
                             logger.warning(f"Cannot download image from Storage: vector_store not initialized")
                     except Exception as e:

@@ -1128,9 +1128,6 @@ def main_area():
                         if chunk_data["type"] == "context":
                             # コンテキスト情報を保存
                             context_data = chunk_data
-                            logger.info(
-                                f"[DEBUG] Context data received: sources={len(chunk_data.get('sources', {}).get('text', []))} text, {len(chunk_data.get('sources', {}).get('images', []))} images"
-                            )
                         elif chunk_data["type"] == "chunk":
                             full_answer += chunk_data["content"]
                             answer_placeholder.markdown(full_answer + "▌")  # カーソル表示
@@ -1146,11 +1143,8 @@ def main_area():
                             "context": context_data.get("context", ""),
                             "images": context_data.get("images", []),
                         }
-                        logger.info(
-                            f"[DEBUG] result_data constructed: sources={len(result_data.get('sources', {}).get('text', []))} text, {len(result_data.get('sources', {}).get('images', []))} images"
-                        )
                     else:
-                        logger.warning("[DEBUG] context_data is None - result_data remains None")
+                        logger.warning("Context data not received from streaming query")
 
                 except Exception as stream_error:
                     # ストリーミングエラー時は通常モードにフォールバック
@@ -1205,17 +1199,11 @@ def main_area():
                             pdf_references[source_file]["pages"].add(page_number)
 
                         # 📸 参照ページプレビュー（上位3-5ページ）
-                        logger.info(
-                            f"[DEBUG] Checking page preview condition: result_data={result_data is not None}, has_sources={result_data.get('sources') if result_data else None}"
-                        )
                         if result_data and result_data.get("sources"):
-                            logger.info(f"[DEBUG] Calling get_top_reference_pages with sources")
                             top_pages = st.session_state.rag_engine.get_top_reference_pages(
                                 result_data["sources"], top_n=5
                             )
-                            logger.info(f"[DEBUG] get_top_reference_pages returned {len(top_pages)} pages")
                         else:
-                            logger.warning("[DEBUG] Skipping page preview - result_data or sources missing")
                             top_pages = []
 
                         if top_pages:

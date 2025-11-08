@@ -217,9 +217,9 @@ class VectorStore:
             if embeddings and len(embeddings) > 0:
                 first_emb = embeddings[0]
                 first_emb_dim = len(first_emb)
-                logger.info(f"🔍 DEBUG: Saving {len(embeddings)} embeddings, first dimension: {first_emb_dim}")
-                logger.info(f"🔍 DEBUG: Embedding type before save: {type(first_emb)}")
-                logger.info(f"🔍 DEBUG: First 3 values: {first_emb[:3]}")
+                logger.debug(f"Saving {len(embeddings)} embeddings, first dimension: {first_emb_dim}")
+                logger.debug(f"Embedding type before save: {type(first_emb)}")
+                logger.debug(f"First 3 values: {first_emb[:3]}")
                 if first_emb_dim != 3072:
                     logger.error(f"❌ DEBUG: ABNORMAL embedding dimension before save! Expected 3072, got {first_emb_dim}")
 
@@ -294,7 +294,7 @@ class VectorStore:
             # デバッグ: Embeddingサイズを確認
             if embeddings and len(embeddings) > 0:
                 first_emb_dim = len(embeddings[0])
-                logger.info(f"🔍 DEBUG: Saving {len(embeddings)} image embeddings, first dimension: {first_emb_dim}")
+                logger.debug(f"Saving {len(embeddings)} image embeddings, first dimension: {first_emb_dim}")
                 if first_emb_dim != 3072:
                     logger.error(f"❌ DEBUG: ABNORMAL image embedding dimension before save! Expected 3072, got {first_emb_dim}")
 
@@ -600,16 +600,16 @@ class VectorStore:
                     .select('id', count='exact')\
                     .eq('category', category)\
                     .execute()
-                logger.info(f"🔍 DEBUG: Found {count_response.count} text chunks with category='{category}' in database")
+                logger.debug(f"Found {count_response.count} text chunks with category='{category}' in database")
 
             # テキスト検索
             if search_type in ['text', 'both']:
                 logger.info(f"Calling match_text_chunks with category={category}, top_k={top_k}, threshold={self.match_threshold}")
 
                 # 🔍 デバッグ: query_embeddingを確認
-                logger.info(f"🔍 DEBUG: query_embedding type={type(query_embedding)}, len={len(query_embedding) if query_embedding else 0}")
+                logger.debug(f"query_embedding type={type(query_embedding)}, len={len(query_embedding) if query_embedding else 0}")
                 if query_embedding and len(query_embedding) > 0:
-                    logger.info(f"🔍 DEBUG: First 3 values: {query_embedding[:3]}")
+                    logger.debug(f"First 3 values: {query_embedding[:3]}")
                 else:
                     logger.error(f"❌ DEBUG: query_embedding is empty or None!")
 
@@ -621,7 +621,7 @@ class VectorStore:
                     'filter_category': category
                 }
 
-                logger.info(f"🔍 DEBUG: RPC params prepared - threshold={self.match_threshold}, count={top_k}, category={category}")
+                logger.debug(f"RPC params prepared - threshold={self.match_threshold}, count={top_k}, category={category}")
 
                 response = self.client.rpc('match_text_chunks', rpc_params).execute()
 
@@ -659,7 +659,7 @@ class VectorStore:
                         .select('id', count='exact')\
                         .eq('category', category)\
                         .execute()
-                    logger.info(f"🔍 DEBUG: Found {count_response.count} image contents with category='{category}' in database")
+                    logger.debug(f"Found {count_response.count} image contents with category='{category}' in database")
 
                 logger.info(f"Calling match_image_contents with category={category}, top_k={top_k}, threshold={self.match_threshold}")
 
@@ -1141,7 +1141,7 @@ class VectorStore:
 
             if text_response.data:
                 result['text_chunks'] = text_response.data
-                logger.info(f"📊 DEBUG: Sample text chunks for '{category}':")
+                logger.debug(f"Sample text chunks for '{category}':")
                 for i, chunk in enumerate(text_response.data[:3], 1):
                     logger.info(f"  [{i}] {chunk['source_file']} (page {chunk['page_number']})")
                     logger.info(f"      Content preview: {chunk['content'][:100]}...")
@@ -1155,7 +1155,7 @@ class VectorStore:
 
             if image_response.data:
                 result['images'] = image_response.data
-                logger.info(f"📊 DEBUG: Sample images for '{category}':")
+                logger.debug(f"Sample images for '{category}':")
                 for i, img in enumerate(image_response.data[:3], 1):
                     logger.info(f"  [{i}] {img['source_file']} (page {img['page_number']}, type: {img.get('content_type', 'image')})")
                     logger.info(f"      Description preview: {img['content'][:100]}...")
@@ -1170,9 +1170,9 @@ class VectorStore:
             if text_with_emb.data and len(text_with_emb.data) > 0:
                 embedding = text_with_emb.data[0].get('embedding')
                 if embedding:
-                    logger.info(f"✅ DEBUG: Embedding exists, dimension: {len(embedding)}")
-                    logger.info(f"🔍 DEBUG: Embedding type: {type(embedding)}")
-                    logger.info(f"🔍 DEBUG: First 5 elements: {embedding[:5]}")
+                    logger.debug(f"Embedding exists, dimension: {len(embedding)}")
+                    logger.debug(f"Embedding type: {type(embedding)}")
+                    logger.debug(f"First 5 elements: {embedding[:5]}")
 
                     # 異常な次元数の場合は警告
                     if len(embedding) != 3072:
