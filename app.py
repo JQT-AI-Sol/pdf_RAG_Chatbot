@@ -990,8 +990,7 @@ def main_area():
                                                                 str(pdf_path),
                                                                 annotations=annotations,
                                                                 pages_to_render=[page_num],  # 該当ページのみ
-                                                                width=350,
-                                                                height=500,
+                                                                height=700,
                                                                 render_text=True,
                                                                 key=f"pdf_viewer_hist_{idx}_{source_file}_{page_num}_{col_idx}"
                                                             )
@@ -1298,8 +1297,7 @@ def main_area():
                                                                     str(pdf_path),
                                                                     annotations=annotations,
                                                                     pages_to_render=[page_num],  # 該当ページのみ
-                                                                    width=350,
-                                                                    height=500,
+                                                                    height=700,
                                                                     render_text=True,
                                                                     key=f"pdf_viewer_new_{source_file}_{page_num}_{col_idx}"
                                                                 )
