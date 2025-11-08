@@ -52,8 +52,16 @@ def initialize_app():
     # ディレクトリ作成
     ensure_directories()
 
-    # 設定読み込み
-    config = load_config()
+    # 設定読み込み（Streamlit Cloud環境を自動検出）
+    import os
+    is_streamlit_cloud = (
+        os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud"
+        or os.path.exists("/mount/src")
+        or "STREAMLIT_SHARING_MODE" in os.environ
+    )
+    config_file = "config.cloud.yaml" if is_streamlit_cloud else "config.yaml"
+    logger.info(f"Loading config from: {config_file} (is_streamlit_cloud={is_streamlit_cloud})")
+    config = load_config(config_file)
 
     # ログ設定
     logger = setup_logging(config)
@@ -904,6 +912,9 @@ def main_area():
 
                                 # ファイル拡張子を最初のページから取得（Excel判定用）
                                 first_page_extension = pages[0].get("file_extension", "") if pages else ""
+                                # フォールバック: file_extensionがない場合、ファイル名から取得
+                                if not first_page_extension and pages:
+                                    first_page_extension = Path(source_file).suffix.lower()
                                 is_excel = first_page_extension in [".xlsx", ".xls"]
 
                                 if is_excel:
@@ -1225,6 +1236,9 @@ def main_area():
 
                                     # ファイル拡張子を最初のページから取得（Excel判定用）
                                     first_page_extension = pages[0].get("file_extension", "") if pages else ""
+                                    # フォールバック: file_extensionがない場合、ファイル名から取得
+                                    if not first_page_extension and pages:
+                                        first_page_extension = Path(source_file).suffix.lower()
                                     is_excel = first_page_extension in [".xlsx", ".xls"]
 
                                     if is_excel:

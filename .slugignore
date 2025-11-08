@@ -1,0 +1,47 @@
+# Streamlit Cloud用デプロイ除外設定
+# テスト・評価・ドキュメントなど開発用ファイルを除外してデプロイサイズを削減
+
+# テスト・評価ディレクトリ
+tests/
+docs/
+evaluation/
+
+# デバッグ・メンテナンススクリプト
+check_*.py
+test_*.py
+debug_*.py
+clean_data.py
+clear_cache.py
+delete_pdf.py
+migrate_pdfs_to_supabase.py
+setup_supabase_schema.py
+search_vaccine_data.py
+
+# SQLファイル
+*.sql
+
+# Git・開発環境
+.git/
+.gitignore
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# ログ・キャッシュ（ローカル環境のみ）
+logs/
+cache/
+*.log
+
+# ローカルデータ（Supabase使用のため不要）
+data/chroma_db/
+data/uploaded_pdfs/
+data/converted_pdfs/
+data/categories.json
+
+# README（オプション：デプロイには不要）
+# README.md

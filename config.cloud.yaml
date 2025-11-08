@@ -1,0 +1,318 @@
+# Streamlit Cloud用軽量設定
+# RAG精度は維持しつつ、メモリ・CPU使用量を最適化
+
+# OpenAI設定
+openai:
+  model_chat: "gpt-4.1"
+  model_vision: "gpt-4.1"
+  model_embedding: "text-embedding-3-large"
+  temperature: 0.7
+  max_tokens: 16000
+
+# Gemini設定
+gemini:
+  model_chat: "gemini-2.5-pro"
+  model_vision: "gemini-2.5-pro"
+  max_tokens: 8192
+  temperature: 0.7
+
+# Vector Store設定（Supabase固定）
+vector_store:
+  provider: "supabase"
+
+  supabase:
+    table_name_text: "pdf_text_chunks"
+    table_name_images: "pdf_image_contents"
+    table_name_pdfs: "registered_pdfs"
+    match_threshold: 0.5
+    storage_bucket: "pdf-images"
+    pdf_storage_bucket: "pdf-files"
+
+# ドキュメントアップロード設定
+pdf_upload:
+  max_file_size_mb: 50
+
+# Office→PDF変換設定
+office_to_pdf_conversion:
+  enabled: true
+  timeout: 60
+  output_directory: "data/converted_pdfs"
+  cache_converted_pdfs: true
+  fallback_on_error: true
+  enable_preview: true
+
+# ドキュメント処理設定
+pdf_processing:
+  chunk_size: 800
+  chunk_overlap: 150
+  max_files: 5
+  extract_images: true
+  min_image_size: 100
+  image_crop_margin: 150
+  extract_tables_as_markdown: true
+  table_classification: true
+  complex_table_threshold: 20
+  table_detection_strategy: "fast"
+  detect_charts: true
+  save_charts_as_images: true
+  include_surrounding_context: true
+  context_lines_before: 3
+  context_lines_after: 2
+
+# Excel処理設定
+excel_processing:
+  enable_llm_summarization: true
+  summarization_prompt: |
+    あなたはExcelの表データを自然な日本語で説明する専門家です。
+    以下のMarkdown形式の表データを、検索しやすい自然な日本語の文章に変換してください。
+
+    【変換のルール】
+    1. 表の内容を正確に説明する（シート名: {sheet_name}）
+    2. 数値データは具体的な値を含める
+    3. 表の構造（行・列の関係）を文章で表現
+    4. 重要なキーワードを繰り返して検索性を向上
+    5. 箇条書きや段落を使って読みやすくする
+    6. 表のタイトルや見出しから文脈を推測して説明を補完
+
+    【Markdown表データ】
+    {markdown_table}
+
+    【自然言語での説明】
+
+# Vision設定
+vision:
+  max_image_size: 2000
+  image_format: "PNG"
+  enable_caching: true
+  use_for_charts_only: true
+  use_for_complex_tables: true
+  use_for_simple_tables: false
+  analysis_prompt_table: |
+    【重要】あなたは技術文書・制度説明資料を解析する専門家です。
+    以下の画像から情報を抽出する際、必ず以下のルールに従ってください。
+
+    【絶対に守るべきルール】
+    ❌ JSON形式で出力しないでください
+    ❌ コードブロック（```）を使用しないでください
+    ❌ 構造化データ（{...}）を使用しないでください
+    ✅ 必ず平文の日本語テキストのみで出力してください
+
+    【抽出する情報】
+    以下の画像は文書ページまたは表が含まれています。画像から以下の情報を抽出してください：
+
+    1. **ページ全体の内容**
+       - タイトルや見出しを記載
+       - 本文のテキストを一字一句そのまま抽出
+       - 箇条書きや番号付きリストは「・」や「1.」などを使って記載
+
+    2. **表がある場合（最重要）**
+       - 表のタイトルを記載
+       - 列の見出し（ヘッダー行）をすべて記載
+       - **全ての行と全ての列のデータを必ず抽出してください**
+       - **空欄やダッシュ記号（ー）も含めて、すべてのセルの内容を記載してください**
+       - **数値データ（金額、時間、パーセンテージなど）は必ず具体的な値を記載してください**
+       - 各行のデータは「行1: 列1の値, 列2の値, 列3の値, ...」のように記載
+       - セルが空欄の場合は「（空欄）」と明記
+       - セルに「ー」がある場合は「ー」と明記
+       - **絶対に「記載なし」「データなし」などと省略しないでください**
+
+    3. **その他の情報**
+       - 注釈や補足説明をすべて記載
+       - 参照情報や連絡先を記載
+
+    【表データ抽出の例】
+    「計画と1人当たり助成額に関する表
+
+    列見出し: 週所定労働時間の延長、賃金の増額、1人当たり助成額（小規模企業）、1人当たり助成額（中小企業）、1人当たり助成額（大企業）
+
+    行1: 5時間以上の延長、ー、50万円、40万円、30万円
+    行2: 4時間以上5時間未満の延長、賃金5%以上増額、50万円、40万円、30万円
+    行3: 3時間以上4時間未満の延長、賃金10%以上増額、50万円、40万円、30万円
+    ...」
+
+    このように、表のすべてのセル（空欄や記号も含む）を漏れなく抽出してください。
+    画像内のすべてのテキストを省略せず、完全に抽出してください。
+
+  analysis_prompt_graph: |
+    あなたは技術文書のグラフを解析する専門家です。
+    以下の画像は技術マニュアルに含まれるグラフです。
+
+    以下の情報を抽出してください：
+
+    1. **グラフの種類**
+       - 折れ線グラフ、棒グラフ、円グラフ、散布図など
+
+    2. **視覚的な特徴**
+       - データの傾向（増加、減少、一定など）
+       - 特異点や注目すべきポイント
+
+    3. **数値データ（重要）**
+       - X軸とY軸のラベル・単位
+       - グラフ内の具体的なデータポイント（可能な限り）
+       - 凡例の内容
+       - グラフタイトル
+
+    4. **主要な洞察**
+       - このグラフから読み取れる重要な情報
+
+    JSON形式で構造化して出力してください：
+    {
+      "graph_type": "...",
+      "title": "...",
+      "axes": {"x": "...", "y": "..."},
+      "data_points": [...],
+      "insights": "..."
+    }
+
+  analysis_prompt_ocr: |
+    【重要】あなたはOCR（光学文字認識）の専門家です。
+    以下の画像からすべてのテキストを抽出し、JSON形式で出力してください。
+
+    【出力形式】
+    必ずJSON形式で出力してください。各テキスト要素には以下の情報を含めること：
+    {
+      "words": [
+        {
+          "text": "抽出されたテキスト",
+          "confidence": 0.95,
+          "bbox": {"x0": 10, "y0": 20, "x1": 100, "y1": 40}
+        },
+        ...
+      ],
+      "full_text": "ページ全体のテキスト（読み順に並べたもの）"
+    }
+
+    【抽出ルール】
+    1. **すべてのテキストを抽出**
+       - 見出し、本文、図表内の文字、注釈など、すべてのテキストを漏れなく抽出
+       - 数値、記号、句読点も正確に抽出
+
+    2. **座標情報（bbox）**
+       - x0, y0: テキストの左上座標（ピクセル単位）
+       - x1, y1: テキストの右下座標（ピクセル単位）
+       - 画像の左上が原点(0,0)
+
+    3. **信頼度（confidence）**
+       - 0.0〜1.0の範囲で、認識の確信度を推定
+       - 明確なテキスト: 0.9以上
+       - やや不明瞭: 0.7〜0.9
+       - 不明瞭: 0.7未満
+
+    4. **読み順**
+       - 上から下、左から右の順で抽出
+       - full_textには読み順通りに並べる
+
+    【注意事項】
+    - 必ずJSONコードブロック（```json）で囲んでください
+    - テキストが存在しない場合は空配列を返してください
+    - 座標は画像サイズに対する相対値ではなく、絶対ピクセル値で指定
+
+# PDFページハイライト設定
+pdf_highlighting:
+  enabled: true
+  method: "hybrid"
+  use_llm_keywords: true
+  max_pages_to_display: 5
+  columns_per_row: 3
+  dpi: 150
+  target_width: 1000
+  highlight_color:
+    r: 255
+    g: 255
+    b: 0
+    alpha: 80
+  highlight_padding: 2
+  llm_extraction:
+    max_keywords: 10
+    min_keyword_length: 2
+  hybrid:
+    embedding_threshold: 0.7
+    max_candidates: 10
+    max_final: 5
+    use_llm_refinement: true
+    fallback_to_keyword: true
+  keyword:
+    min_length: 2
+    use_unicode_normalization: true
+    case_insensitive: false
+
+# RAG性能向上設定（Streamlit Cloud最適化）
+rag:
+  enable_reranking: true  # RAG精度維持のため有効
+  enable_semantic_chunking: true
+  enable_embedding_cache: true
+  enable_vision_cache: true
+  enable_bm25_hybrid: true  # キーワード検索で精度向上
+
+# チャンキング設定
+chunking:
+  chunk_size: 800
+  chunk_overlap: 150
+  separators:
+    - "\n\n"
+    - "\n"
+    - "。"
+    - "．"
+    - ". "
+    - "! "
+    - "? "
+    - "；"
+    - "、"
+    - ", "
+    - " "
+    - ""
+
+# Reranking設定
+reranking:
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  top_k_initial: 10
+  top_k_final: 5
+
+# BM25ハイブリッド検索設定
+hybrid_search:
+  enabled: true
+  alpha: 0.7
+
+# キャッシュ設定
+cache:
+  embedding:
+    enabled: true
+    directory: "./cache/embeddings"
+    max_memory_items: 1000
+  vision:
+    enabled: true
+    directory: "./cache/vision_analysis"
+    expiry_days: 30
+
+# 検索設定
+search:
+  top_k_text: 5
+  top_k_images: 5
+  similarity_threshold: 0.7
+  enable_hybrid_search: true
+  enable_category_filter: true
+
+# カテゴリー設定
+category:
+  storage_file: "./data/categories.json"
+  allow_custom: true
+
+# パフォーマンス設定（Streamlit Cloud最適化）
+performance:
+  max_workers: 2  # 4→2に削減（CPU: 0.2 cores制約）
+  embedding_batch_size: 50  # 100→50に削減（メモリ節約）
+
+# ログ設定
+logging:
+  level: "INFO"
+  file: "./logs/app.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Langfuse設定（Streamlit Cloud用：無効化）
+langfuse:
+  enabled: false  # 監視はローカル開発のみ（約20MB削減）
+
+# チャット設定
+chat:
+  max_history_messages: 10
+  include_images_in_history: false

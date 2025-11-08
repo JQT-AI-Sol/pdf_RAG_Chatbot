@@ -11,7 +11,7 @@ openai>=1.12.0
 google-generativeai>=0.3.0
 
 # Vector Database
-chromadb>=0.4.22
+# chromadb>=0.4.22  # Supabase使用中のため不要（約50MB削減）
 supabase>=2.0.0
 pgvector>=0.2.0
 
