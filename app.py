@@ -18,9 +18,13 @@ from src.vector_store import VectorStore
 from src.rag_engine import RAGEngine
 from src.pdf_manager import PDFManager
 from src.pdf_page_renderer import (
-    extract_page_as_image, extract_multiple_pages, extract_page_with_highlight,
-    PDF2IMAGE_AVAILABLE, get_pdf_path, create_pdf_annotations_pymupdf,
-    create_pdf_annotations_hybrid
+    extract_page_as_image,
+    extract_multiple_pages,
+    extract_page_with_highlight,
+    PDF2IMAGE_AVAILABLE,
+    get_pdf_path,
+    create_pdf_annotations_pymupdf,
+    create_pdf_annotations_hybrid,
 )
 
 # ロガー設定（インポート前に定義）
@@ -29,6 +33,7 @@ logger = logging.getLogger(__name__)
 # streamlit-pdf-viewer のインポート
 try:
     from streamlit_pdf_viewer import pdf_viewer
+
     STREAMLIT_PDF_VIEWER_AVAILABLE = True
     logger.info("✅ streamlit-pdf-viewer is available")
 except ImportError:
@@ -36,11 +41,7 @@ except ImportError:
     logger.warning("❌ streamlit-pdf-viewer not available - using fallback image display")
 
 # ページ設定
-st.set_page_config(
-    page_title="PDF RAG System",
-    page_icon="📚",
-    layout="wide"
-)
+st.set_page_config(page_title="PDF RAG System", page_icon="📚", layout="wide")
 
 
 def initialize_app():
@@ -58,22 +59,15 @@ def initialize_app():
     logger = setup_logging(config)
 
     # セッション状態の初期化
-    if 'initialized' not in st.session_state:
+    if "initialized" not in st.session_state:
         st.session_state.initialized = True
         st.session_state.config = config
         st.session_state.document_processor = DocumentProcessor(config)
         st.session_state.embedder = TextEmbedder(config)
         st.session_state.vision_analyzer = VisionAnalyzer(config)
         st.session_state.vector_store = VectorStore(config)
-        st.session_state.rag_engine = RAGEngine(
-            config,
-            st.session_state.vector_store,
-            st.session_state.embedder
-        )
-        st.session_state.pdf_manager = PDFManager(
-            st.session_state.vector_store,
-            config
-        )
+        st.session_state.rag_engine = RAGEngine(config, st.session_state.vector_store, st.session_state.embedder)
+        st.session_state.pdf_manager = PDFManager(st.session_state.vector_store, config)
         st.session_state.chat_history = []
         st.session_state.selected_category = "全カテゴリー"
         st.session_state.previous_category = "全カテゴリー"
@@ -95,7 +89,7 @@ def sidebar():
     st.sidebar.title("📁 ドキュメント管理")
 
     # Vision Analyzer警告表示
-    if st.session_state.get('vision_disabled', False):
+    if st.session_state.get("vision_disabled", False):
         st.sidebar.warning(
             "⚠️ 画像解析機能が無効です\n\n"
             "OPENAI_API_KEYが設定されていません。\n"
@@ -118,22 +112,19 @@ def sidebar():
     st.sidebar.subheader("📄 ドキュメントアップロード")
 
     # uploader_keyの初期化（セッション状態にない場合）
-    if 'uploader_key' not in st.session_state:
+    if "uploader_key" not in st.session_state:
         st.session_state.uploader_key = 0
 
     uploaded_files = st.sidebar.file_uploader(
         "ファイルを選択 (PDF, Word, Excel, PowerPoint, Text)",
-        type=['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt'],
+        type=["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "txt"],
         accept_multiple_files=True,
         help="対応形式: PDF, Word, Excel, PowerPoint, Text",
-        key=f"uploader_{st.session_state.uploader_key}"
+        key=f"uploader_{st.session_state.uploader_key}",
     )
 
     # カテゴリー入力
-    category = st.sidebar.text_input(
-        "カテゴリー名",
-        placeholder="例: 製品マニュアル"
-    )
+    category = st.sidebar.text_input("カテゴリー名", placeholder="例: 製品マニュアル")
 
     # インデックス作成ボタン
     if st.sidebar.button("📑 インデックス作成", type="primary"):
@@ -163,14 +154,14 @@ def sidebar():
     if registered_pdfs:
         for pdf in registered_pdfs:
             # ファイル拡張子に応じたアイコンを選択
-            file_ext = Path(pdf['source_file']).suffix.lower()
-            if file_ext in ['.xlsx', '.xls']:
+            file_ext = Path(pdf["source_file"]).suffix.lower()
+            if file_ext in [".xlsx", ".xls"]:
                 icon = "📊"
-            elif file_ext in ['.docx', '.doc']:
+            elif file_ext in [".docx", ".doc"]:
                 icon = "📝"
-            elif file_ext in ['.pptx', '.ppt']:
+            elif file_ext in [".pptx", ".ppt"]:
                 icon = "📽️"
-            elif file_ext == '.txt':
+            elif file_ext == ".txt":
                 icon = "📄"
             else:
                 icon = "📄"  # PDF or other
@@ -187,17 +178,21 @@ def sidebar():
                 with col1:
                     # 閲覧ボタン
                     # Office形式の場合は変換PDFを表示
-                    source_file_path = Path(pdf['source_file'])
+                    source_file_path = Path(pdf["source_file"])
                     file_ext = source_file_path.suffix.lower()
 
-                    if file_ext in ['.xlsx', '.xls', '.docx', '.doc', '.pptx', '.ppt']:
+                    if file_ext in [".xlsx", ".xls", ".docx", ".doc", ".pptx", ".ppt"]:
                         # 変換PDFのパスを構築
                         converted_pdf_name = source_file_path.stem + ".pdf"
                         converted_pdf_path = Path("data/converted_pdfs") / converted_pdf_name
                         static_pdf_path = Path("static/pdfs") / converted_pdf_name
 
                         # 変換PDFが存在するかチェック
-                        if st.session_state.vector_store.provider == 'supabase' or static_pdf_path.exists() or converted_pdf_path.exists():
+                        if (
+                            st.session_state.vector_store.provider == "supabase"
+                            or static_pdf_path.exists()
+                            or converted_pdf_path.exists()
+                        ):
                             # 変換PDFを表示
                             display_path = static_pdf_path if static_pdf_path.exists() else converted_pdf_path
                             show_pdf_link(display_path, converted_pdf_name, key_suffix="sidebar")
@@ -205,18 +200,20 @@ def sidebar():
                             st.warning(f"変換PDF未作成: {pdf['source_file']}")
                     else:
                         # PDFやテキストファイルはそのまま表示
-                        pdf_path = Path("data/uploaded_pdfs") / pdf['source_file']
-                        if st.session_state.vector_store.provider == 'supabase' or pdf_path.exists():
-                            show_pdf_link(pdf_path, pdf['source_file'], key_suffix="sidebar")
+                        pdf_path = Path("data/uploaded_pdfs") / pdf["source_file"]
+                        if st.session_state.vector_store.provider == "supabase" or pdf_path.exists():
+                            show_pdf_link(pdf_path, pdf["source_file"], key_suffix="sidebar")
                         else:
                             st.error(f"ファイルが見つかりません: {pdf['source_file']}")
 
                 with col2:
                     # 削除ボタン（アイコンのみ）
                     delete_key = f"delete_{pdf['source_file']}"
-                    if st.button("🗑️", key=delete_key, type="secondary", use_container_width=True, help="ドキュメントを削除"):
+                    if st.button(
+                        "🗑️", key=delete_key, type="secondary", use_container_width=True, help="ドキュメントを削除"
+                    ):
                         # 削除確認用のセッション状態を設定
-                        st.session_state.delete_target = pdf['source_file']
+                        st.session_state.delete_target = pdf["source_file"]
                         st.session_state.show_delete_confirm = True
                         st.rerun()
     else:
@@ -236,12 +233,16 @@ def sidebar():
     st.session_state.selected_category = st.sidebar.selectbox(
         "🔍 検索対象カテゴリー",
         categories,
-        index=categories.index(st.session_state.selected_category) if st.session_state.selected_category in categories else 0,
-        help="質問する対象のカテゴリーを選択してください"
+        index=(
+            categories.index(st.session_state.selected_category)
+            if st.session_state.selected_category in categories
+            else 0
+        ),
+        help="質問する対象のカテゴリーを選択してください",
     )
 
     # previous_categoryの初期化（セッション状態にない場合）
-    if 'previous_category' not in st.session_state:
+    if "previous_category" not in st.session_state:
         st.session_state.previous_category = st.session_state.selected_category
 
     # カテゴリー変更を検知してチャット履歴をクリア
@@ -251,16 +252,13 @@ def sidebar():
         st.info(f"カテゴリーを「{st.session_state.selected_category}」に変更しました。チャット履歴をリセットしました。")
 
     # AIモデル選択
-    model_options = {
-        "GPT-4.1": "openai",
-        "Gemini-2.5-Pro": "gemini"
-    }
+    model_options = {"GPT-4.1": "openai", "Gemini-2.5-Pro": "gemini"}
     current_model_display = [k for k, v in model_options.items() if v == st.session_state.selected_model][0]
     selected_model_display = st.sidebar.selectbox(
         "🤖 AIモデル",
         list(model_options.keys()),
         index=list(model_options.keys()).index(current_model_display),
-        help="使用するAIモデルを選択"
+        help="使用するAIモデルを選択",
     )
     st.session_state.selected_model = model_options[selected_model_display]
 
@@ -280,14 +278,16 @@ def process_documents(uploaded_files, category):
     status_text = st.sidebar.empty()
 
     # ファイルサイズの上限を取得
-    max_size_mb = st.session_state.config.get('pdf_upload', {}).get('max_file_size_mb', 50)
+    max_size_mb = st.session_state.config.get("pdf_upload", {}).get("max_file_size_mb", 50)
 
     for i, uploaded_file in enumerate(uploaded_files):
         try:
             # ファイルサイズチェック
             file_size_mb = len(uploaded_file.getbuffer()) / (1024 * 1024)
             if file_size_mb > max_size_mb:
-                st.sidebar.error(f"{uploaded_file.name}: ファイルサイズが上限（{max_size_mb}MB）を超えています（{file_size_mb:.1f}MB）")
+                st.sidebar.error(
+                    f"{uploaded_file.name}: ファイルサイズが上限（{max_size_mb}MB）を超えています（{file_size_mb:.1f}MB）"
+                )
                 continue
 
             # 1. ドキュメントを保存（data/uploaded_pdfs/ と static/pdfs/ の両方）
@@ -306,19 +306,19 @@ def process_documents(uploaded_files, category):
 
             # 1.5. Office→PDF変換（Word/PowerPointの場合、Excelはプレビュー用のみ）
             file_type = st.session_state.document_processor.get_file_type(str(doc_path))
-            conversion_config = st.session_state.config.get('office_to_pdf_conversion', {})
+            conversion_config = st.session_state.config.get("office_to_pdf_conversion", {})
             converted_pdf_path = None
 
             # ExcelはLLM要約で直接処理するため、PDF変換はプレビュー用のみ
-            if file_type in ["word", "powerpoint"] and conversion_config.get('enabled', True):
+            if file_type in ["word", "powerpoint"] and conversion_config.get("enabled", True):
                 # Word/PowerPoint: PDF変換して処理
                 status_text.text(f"処理中: {uploaded_file.name} (1.5/?) - PDF変換中...")
                 try:
                     logging.info(f"🔄 Converting {file_type} file to PDF: {uploaded_file.name}")
                     converted_pdf_path = convert_office_to_pdf(
                         str(doc_path),
-                        output_dir=conversion_config.get('output_directory', 'data/converted_pdfs'),
-                        timeout=conversion_config.get('timeout', 60)
+                        output_dir=conversion_config.get("output_directory", "data/converted_pdfs"),
+                        timeout=conversion_config.get("timeout", 60),
                     )
 
                     if converted_pdf_path:
@@ -327,42 +327,43 @@ def process_documents(uploaded_files, category):
                         static_pdf_path = Path("static/pdfs") / converted_pdf_path.name
                         static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
                         import shutil
+
                         shutil.copy(converted_pdf_path, static_pdf_path)
 
                         # Supabase Storageにもアップロード
-                        if st.session_state.vector_store.provider == 'supabase':
+                        if st.session_state.vector_store.provider == "supabase":
                             try:
                                 st.session_state.vector_store.upload_pdf_to_storage(
-                                    str(converted_pdf_path),
-                                    converted_pdf_path.name,
-                                    category
+                                    str(converted_pdf_path), converted_pdf_path.name, category
                                 )
-                                logging.info(f"✅ Converted PDF uploaded to Supabase Storage: {converted_pdf_path.name}")
+                                logging.info(
+                                    f"✅ Converted PDF uploaded to Supabase Storage: {converted_pdf_path.name}"
+                                )
                             except Exception as e:
                                 logging.warning(f"⚠️ Failed to upload converted PDF to Supabase Storage: {e}")
                     else:
                         logging.warning(f"⚠️ PDF conversion returned None, will process original file")
-                        if not conversion_config.get('fallback_on_error', True):
+                        if not conversion_config.get("fallback_on_error", True):
                             st.sidebar.error(f"{uploaded_file.name}: PDF変換に失敗しました")
                             continue
 
                 except Exception as e:
                     logging.error(f"❌ PDF conversion error for {uploaded_file.name}: {e}", exc_info=True)
-                    if not conversion_config.get('fallback_on_error', True):
+                    if not conversion_config.get("fallback_on_error", True):
                         st.sidebar.error(f"{uploaded_file.name}: PDF変換エラー - {str(e)}")
                         continue
                     else:
                         logging.info(f"Falling back to original file processing")
 
-            elif file_type == "excel" and conversion_config.get('enabled', True):
+            elif file_type == "excel" and conversion_config.get("enabled", True):
                 # Excel: プレビュー用にPDF変換するが、処理は元のExcelファイルで実行（LLM要約）
                 status_text.text(f"処理中: {uploaded_file.name} (1.5/?) - PDF変換中（プレビュー用）...")
                 try:
                     logging.info(f"🔄 Converting Excel to PDF for preview: {uploaded_file.name}")
                     preview_pdf_path = convert_office_to_pdf(
                         str(doc_path),
-                        output_dir=conversion_config.get('output_directory', 'data/converted_pdfs'),
-                        timeout=conversion_config.get('timeout', 60)
+                        output_dir=conversion_config.get("output_directory", "data/converted_pdfs"),
+                        timeout=conversion_config.get("timeout", 60),
                     )
 
                     if preview_pdf_path:
@@ -371,15 +372,14 @@ def process_documents(uploaded_files, category):
                         static_pdf_path = Path("static/pdfs") / preview_pdf_path.name
                         static_pdf_path.parent.mkdir(parents=True, exist_ok=True)
                         import shutil
+
                         shutil.copy(preview_pdf_path, static_pdf_path)
 
                         # Supabase Storageにもアップロード
-                        if st.session_state.vector_store.provider == 'supabase':
+                        if st.session_state.vector_store.provider == "supabase":
                             try:
                                 st.session_state.vector_store.upload_pdf_to_storage(
-                                    str(preview_pdf_path),
-                                    preview_pdf_path.name,
-                                    category
+                                    str(preview_pdf_path), preview_pdf_path.name, category
                                 )
                                 logging.info(f"✅ Preview PDF uploaded to Supabase Storage: {preview_pdf_path.name}")
                             except Exception as e:
@@ -407,27 +407,29 @@ def process_documents(uploaded_files, category):
 
                 # 変換後のPDFパスをメタデータに追加（プレビュー機能で使用）
                 if converted_pdf_path:
-                    doc_result['metadata']['converted_pdf_path'] = str(converted_pdf_path)
-                    doc_result['metadata']['original_file_name'] = uploaded_file.name
+                    doc_result["metadata"]["converted_pdf_path"] = str(converted_pdf_path)
+                    doc_result["metadata"]["original_file_name"] = uploaded_file.name
                     logging.info(f"   Converted PDF path saved: {converted_pdf_path}")
 
                     # ⚠️ 重要：source_fileを元のファイル名に統一
                     # PDF変換した場合、プロセッサは.pdfファイル名を使うが、
                     # DBには元のファイル名(.xlsx, .docx等)で保存する必要がある
                     original_filename = uploaded_file.name
-                    doc_result['source_file'] = original_filename
+                    doc_result["source_file"] = original_filename
 
                     # すべてのtext_chunksのsource_fileを更新
-                    for chunk in doc_result.get('text_chunks', []):
-                        chunk['source_file'] = original_filename
+                    for chunk in doc_result.get("text_chunks", []):
+                        chunk["source_file"] = original_filename
 
                     # すべてのimagesのsource_fileを更新
-                    for image in doc_result.get('images', []):
-                        image['source_file'] = original_filename
+                    for image in doc_result.get("images", []):
+                        image["source_file"] = original_filename
 
                     logging.info(f"   ✅ source_file corrected: {Path(processing_path).name} → {original_filename}")
 
-                logging.info(f"Document processing completed for {uploaded_file.name}: {len(doc_result.get('text_chunks', []))} text chunks, {len(doc_result.get('images', []))} images")
+                logging.info(
+                    f"Document processing completed for {uploaded_file.name}: {len(doc_result.get('text_chunks', []))} text chunks, {len(doc_result.get('images', []))} images"
+                )
             except Exception as e:
                 error_msg = f"ドキュメント処理中にエラーが発生しました: {str(e)}"
                 logging.error(error_msg, exc_info=True)
@@ -435,31 +437,30 @@ def process_documents(uploaded_files, category):
                 continue
 
             # 総ステップ数を決定（画像があれば5、なければ4）
-            total_steps = 5 if doc_result['images'] else 4
-            num_pages = doc_result.get('total_pages', '?')
-            num_chunks = len(doc_result['text_chunks'])
-            num_images = len(doc_result['images'])
+            total_steps = 5 if doc_result["images"] else 4
+            num_pages = doc_result.get("total_pages", "?")
+            num_chunks = len(doc_result["text_chunks"])
+            num_images = len(doc_result["images"])
 
             # 3. テキストチャンクをエンベディング（バッチ処理）
-            status_text.text(f"処理中: {uploaded_file.name} (3/{total_steps}) - テキストエンベディング中（{num_chunks}チャンク）...")
-            if doc_result['text_chunks']:
+            status_text.text(
+                f"処理中: {uploaded_file.name} (3/{total_steps}) - テキストエンベディング中（{num_chunks}チャンク）..."
+            )
+            if doc_result["text_chunks"]:
                 # 全テキストをまとめてバッチ処理
-                texts = [chunk['text'] for chunk in doc_result['text_chunks']]
+                texts = [chunk["text"] for chunk in doc_result["text_chunks"]]
                 text_embeddings = st.session_state.embedder.embed_batch(texts)
 
                 # ベクトルストアに追加
-                st.session_state.vector_store.add_text_chunks(
-                    doc_result['text_chunks'],
-                    text_embeddings
-                )
+                st.session_state.vector_store.add_text_chunks(doc_result["text_chunks"], text_embeddings)
 
             # 4. 画像をVision AIで解析（並列処理）- 画像がある場合のみ
             analyzed_images = []
             failed_images = []
 
-            if doc_result['images']:
+            if doc_result["images"]:
                 status_text.text(f"処理中: {uploaded_file.name} (4/{total_steps}) - 画像解析中（{num_images}枚）...")
-                max_workers = st.session_state.config.get('performance', {}).get('max_workers', 4)
+                max_workers = st.session_state.config.get("performance", {}).get("max_workers", 4)
 
                 # VisionAnalyzerインスタンスをローカル変数に保存（スレッドセーフ）
                 vision_analyzer = st.session_state.vision_analyzer
@@ -467,42 +468,40 @@ def process_documents(uploaded_files, category):
                 # 画像解析を並列処理
                 def analyze_single_image(image_data, analyzer):
                     try:
-                        actual_content_type = image_data.get('content_type', 'image')
-                        image_path = image_data['image_path']
+                        actual_content_type = image_data.get("content_type", "image")
+                        image_path = image_data["image_path"]
                         logging.info(f"Starting analysis for {actual_content_type}: {image_path}")
 
-                        analysis = analyzer.analyze_image(
-                            image_path,
-                            content_type=actual_content_type
-                        )
+                        analysis = analyzer.analyze_image(image_path, content_type=actual_content_type)
 
                         # メタデータを統合
-                        image_data.update({
-                            'category': category,
-                            'content_type': analysis.get('content_type', 'image'),
-                            'description': analysis['description']
-                        })
+                        image_data.update(
+                            {
+                                "category": category,
+                                "content_type": analysis.get("content_type", "image"),
+                                "description": analysis["description"],
+                            }
+                        )
 
                         logging.info(f"Successfully analyzed {actual_content_type}: {image_path}")
-                        return {'success': True, 'data': image_data}
+                        return {"success": True, "data": image_data}
 
                     except Exception as e:
-                        error_msg = f"画像解析失敗 ({image_data.get('image_path', 'unknown')}): {type(e).__name__}: {str(e)}"
+                        error_msg = (
+                            f"画像解析失敗 ({image_data.get('image_path', 'unknown')}): {type(e).__name__}: {str(e)}"
+                        )
                         logging.error(error_msg, exc_info=True)
-                        return {
-                            'success': False,
-                            'data': image_data,
-                            'error': str(e),
-                            'error_type': type(e).__name__
-                        }
+                        return {"success": False, "data": image_data, "error": str(e), "error_type": type(e).__name__}
 
                 # ThreadPoolExecutorで並列処理
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(analyze_single_image, img, vision_analyzer): img for img in doc_result['images']}
+                    futures = {
+                        executor.submit(analyze_single_image, img, vision_analyzer): img for img in doc_result["images"]
+                    }
                     for future in as_completed(futures):
                         result = future.result()
-                        if result['success']:
-                            analyzed_images.append(result['data'])
+                        if result["success"]:
+                            analyzed_images.append(result["data"])
                         else:
                             failed_images.append(result)
 
@@ -516,7 +515,7 @@ def process_documents(uploaded_files, category):
                 if failed_images:
                     error_types = {}
                     for failure in failed_images:
-                        error_type = failure.get('error_type', 'Unknown')
+                        error_type = failure.get("error_type", "Unknown")
                         error_types[error_type] = error_types.get(error_type, 0) + 1
 
                     error_summary = ", ".join([f"{err_type}: {count}件" for err_type, count in error_types.items()])
@@ -531,7 +530,7 @@ def process_documents(uploaded_files, category):
 
                 # 解析結果をバッチでエンベディング
                 if analyzed_images:
-                    descriptions = [img['description'] for img in analyzed_images]
+                    descriptions = [img["description"] for img in analyzed_images]
                     image_embeddings = st.session_state.embedder.embed_batch(descriptions)
 
                     # ベクトルストアにバッチで追加
@@ -541,18 +540,22 @@ def process_documents(uploaded_files, category):
                     # Vision APIで抽出したテキストをtext_chunksとしても保存（検索精度向上）
                     text_chunks_from_vision = []
                     for img in analyzed_images:
-                        text_chunks_from_vision.append({
-                            'text': img['description'],  # 'content'ではなく'text'を使用
-                            'page_number': img['page_number'],
-                            'source_file': img['source_file'],
-                            'category': img['category'],
-                            'content_type': img.get('content_type', 'image')
-                        })
+                        text_chunks_from_vision.append(
+                            {
+                                "text": img["description"],  # 'content'ではなく'text'を使用
+                                "page_number": img["page_number"],
+                                "source_file": img["source_file"],
+                                "category": img["category"],
+                                "content_type": img.get("content_type", "image"),
+                            }
+                        )
 
                     if text_chunks_from_vision:
                         # テキストチャンクとしてもベクトルストアに追加
                         st.session_state.vector_store.add_text_chunks(text_chunks_from_vision, image_embeddings)
-                        logging.info(f"Added {len(text_chunks_from_vision)} vision-extracted text chunks to vector store")
+                        logging.info(
+                            f"Added {len(text_chunks_from_vision)} vision-extracted text chunks to vector store"
+                        )
                 else:
                     # 全ての画像解析が失敗した場合
                     error_msg = f"❌ 全ての画像解析が失敗しました ({num_images}枚)"
@@ -561,7 +564,7 @@ def process_documents(uploaded_files, category):
 
             # PDFをSupabase Storageにアップロード（Supabaseの場合）
             storage_path = None
-            if st.session_state.vector_store.provider == 'supabase':
+            if st.session_state.vector_store.provider == "supabase":
                 try:
                     storage_path = st.session_state.vector_store.upload_pdf_to_storage(
                         str(doc_path), uploaded_file.name, category
@@ -576,7 +579,7 @@ def process_documents(uploaded_files, category):
 
             # 完了メッセージの作成
             completion_msg = f"✅ {uploaded_file.name}: テキスト {len(doc_result['text_chunks'])}件"
-            if doc_result['images']:
+            if doc_result["images"]:
                 if analyzed_images:
                     completion_msg += f", 画像 {len(analyzed_images)}/{num_images}件"
                 else:
@@ -599,7 +602,7 @@ def process_documents(uploaded_files, category):
 @st.dialog("PDF削除の確認")
 def confirm_delete_dialog():
     """PDF削除の確認ダイアログ"""
-    if 'delete_target' not in st.session_state:
+    if "delete_target" not in st.session_state:
         st.error("削除対象が指定されていません")
         return
 
@@ -623,27 +626,27 @@ def confirm_delete_dialog():
                 with st.spinner("削除中..."):
                     result = st.session_state.pdf_manager.delete_pdf(target_file)
 
-                if result['success']:
-                    st.success(result['message'])
-                    if result['category_deleted']:
+                if result["success"]:
+                    st.success(result["message"])
+                    if result["category_deleted"]:
                         st.info(f"カテゴリー「{pdf_info['category']}」も削除されました（他にPDFがないため）")
 
                     # セッション状態をクリア
-                    if 'delete_target' in st.session_state:
+                    if "delete_target" in st.session_state:
                         del st.session_state.delete_target
-                    if 'show_delete_confirm' in st.session_state:
+                    if "show_delete_confirm" in st.session_state:
                         del st.session_state.show_delete_confirm
 
                     st.rerun()
                 else:
-                    st.error(result['message'])
+                    st.error(result["message"])
 
         with col2:
             if st.button("❌ キャンセル", use_container_width=True):
                 # セッション状態をクリア
-                if 'delete_target' in st.session_state:
+                if "delete_target" in st.session_state:
                     del st.session_state.delete_target
-                if 'show_delete_confirm' in st.session_state:
+                if "show_delete_confirm" in st.session_state:
                     del st.session_state.show_delete_confirm
                 st.rerun()
     else:
@@ -655,7 +658,7 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
     import os
 
     # Supabase ProviderでStorage URLが利用可能か確認
-    if st.session_state.vector_store.provider == 'supabase':
+    if st.session_state.vector_store.provider == "supabase":
         try:
             # Supabase StorageからPDFの署名付きURLを取得
             pdf_url = st.session_state.vector_store.get_pdf_url_from_storage(target_file)
@@ -664,17 +667,17 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
                 # 署名付きURLを新しいタブで開くリンクとして表示
                 st.markdown(
                     f'<a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="'
-                    f'display: inline-block; '
-                    f'width: 100%; '
-                    f'padding: 0.5rem 1rem; '
-                    f'background-color: #ff4b4b; '
-                    f'color: white; '
-                    f'text-align: center; '
-                    f'text-decoration: none; '
-                    f'border-radius: 0.5rem; '
-                    f'font-weight: 500; '
+                    f"display: inline-block; "
+                    f"width: 100%; "
+                    f"padding: 0.5rem 1rem; "
+                    f"background-color: #ff4b4b; "
+                    f"color: white; "
+                    f"text-align: center; "
+                    f"text-decoration: none; "
+                    f"border-radius: 0.5rem; "
+                    f"font-weight: 500; "
                     f'">📖 PDFを開く（新しいタブ）</a>',
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
                 return
             else:
@@ -685,9 +688,9 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
     # フォールバック: ローカルファイルを使用
     # Streamlit Cloud環境を検出
     is_streamlit_cloud = (
-        os.environ.get('STREAMLIT_RUNTIME_ENV') == 'cloud' or
-        os.path.exists('/mount/src') or
-        'STREAMLIT_SHARING_MODE' in os.environ
+        os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud"
+        or os.path.exists("/mount/src")
+        or "STREAMLIT_SHARING_MODE" in os.environ
     )
 
     if is_streamlit_cloud:
@@ -701,7 +704,7 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
                     file_name=target_file,
                     mime="application/pdf",
                     key=f"download_pdf_{key_suffix}_{target_file.replace('.', '_')}",
-                    use_container_width=True
+                    use_container_width=True,
                 )
         else:
             st.error(f"PDFファイルが見つかりません: {target_file}")
@@ -712,17 +715,17 @@ def show_pdf_link(pdf_path: Path, target_file: str, key_suffix: str = ""):
         # 新しいタブで開くリンクを表示
         st.markdown(
             f'<a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="'
-            f'display: inline-block; '
-            f'width: 100%; '
-            f'padding: 0.5rem 1rem; '
-            f'background-color: #ff4b4b; '
-            f'color: white; '
-            f'text-align: center; '
-            f'text-decoration: none; '
-            f'border-radius: 0.5rem; '
-            f'font-weight: 500; '
+            f"display: inline-block; "
+            f"width: 100%; "
+            f"padding: 0.5rem 1rem; "
+            f"background-color: #ff4b4b; "
+            f"color: white; "
+            f"text-align: center; "
+            f"text-decoration: none; "
+            f"border-radius: 0.5rem; "
+            f"font-weight: 500; "
             f'">📖 PDFを開く（新しいタブ）</a>',
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
 
@@ -746,7 +749,7 @@ def get_pdf_path_for_preview(source_file: str) -> Path:
         return pdf_path
 
     # Supabase Storageからダウンロードを試行
-    if st.session_state.vector_store.provider == 'supabase':
+    if st.session_state.vector_store.provider == "supabase":
         try:
             # 一時ディレクトリにダウンロード
             temp_dir = Path(tempfile.gettempdir()) / "pdf_preview_cache"
@@ -758,9 +761,7 @@ def get_pdf_path_for_preview(source_file: str) -> Path:
                 return temp_pdf_path
 
             # Supabase Storageからダウンロード
-            success = st.session_state.vector_store.download_pdf_from_storage(
-                source_file, str(temp_pdf_path)
-            )
+            success = st.session_state.vector_store.download_pdf_from_storage(source_file, str(temp_pdf_path))
 
             if success:
                 logging.info(f"Downloaded PDF from Supabase Storage for preview: {source_file}")
@@ -777,7 +778,7 @@ def get_pdf_path_for_preview(source_file: str) -> Path:
 def main_area():
     """メインエリアのUI"""
     # 削除確認ダイアログの表示
-    if st.session_state.get('show_delete_confirm', False):
+    if st.session_state.get("show_delete_confirm", False):
         confirm_delete_dialog()
 
     st.title("📚 PDF RAG System")
@@ -789,23 +790,27 @@ def main_area():
     auto_expand = len(registered_pdfs) == 0
 
     with st.expander("📖 使い方ガイド", expanded=auto_expand):
-        st.markdown("""
+        st.markdown(
+            """
         ### 基本的な使い方の流れ
 
-        このシステムは、PDFファイルをアップロードして質問に答えるRAG（Retrieval-Augmented Generation）システムです。
+        このシステムは、ドキュメントをアップロードして質問に答えるRAG（Retrieval-Augmented Generation）システムです。
 
-        #### **Step 1: PDFのアップロード** 📁
-        - 左サイドバーの「PDFファイルを選択」から、PDF文書を1つまたは複数選択します
+        #### **Step 1: ドキュメントのアップロード** 📁
+        - 左サイドバーの「Browse files」から、ドキュメントを1つまたは複数選択します
         - 最大ファイルサイズ: 50MB/ファイル
+        - PDF, Word, Excel, PowerPoint, Text形式がアップロード可能です
+        - Excelファイルは精度が落ちる可能性があるため、PDF化してからアップロードすることをおすすめします
 
         #### **Step 2: カテゴリーの設定** 🏷️
-        - PDFを分類するためのカテゴリー名を入力します
+        - ドキュメントを分類するためのカテゴリー名を入力します
         - 例: 「製品マニュアル」「技術仕様書」「ユーザーガイド」など
         - **同じカテゴリー名**を使うことで、複数のPDFをグループ化できます
+        - カテゴリーを選択してから質問することで、回答の精度を高めることができます
 
         #### **Step 3: インデックス作成** ⚙️
         - 「📑 インデックス作成」ボタンをクリックします
-        - システムがPDFを解析し、テキスト・画像・グラフを抽出します
+        - システムがドキュメントを解析し、テキスト・画像・グラフを抽出します
         - **処理時間の目安**: 1ページあたり2-5秒（画像の数により変動）
 
         #### **Step 4: 質問の入力** 💬
@@ -828,15 +833,8 @@ def main_area():
         - **カテゴリー分けの推奨**: 製品ごと、プロジェクトごとにカテゴリーを分けると検索精度が向上します
         - **具体的な質問**: 「〇〇の仕様は？」「△△の手順を教えて」など具体的に質問すると良い結果が得られます
         - **会話メモリ機能**: 前の質問を踏まえた追加質問が可能です。セッション中の全ての会話履歴を記憶して回答します
-
-        ---
-
-        ### ⚠️ 注意事項
-
-        - **データの永続化**: Streamlit Cloudでは、アプリ再起動時にアップロードしたデータは消去されます
-        - **API制限**: OpenAI/Gemini APIの利用制限にご注意ください
-        - **画像解析**: GEMINI_API_KEYが未設定の場合、画像解析機能は無効になります
-        """)
+        """
+        )
 
     st.markdown("---")
 
@@ -860,36 +858,27 @@ def main_area():
                     # テキスト参照元を集約
                     for result in text_sources:
                         metadata = result.get("metadata", {})
-                        source_file = metadata.get('source_file', 'Unknown')
-                        page_number = metadata.get('page_number', 'Unknown')
-                        category = metadata.get('category', 'Unknown')
+                        source_file = metadata.get("source_file", "Unknown")
+                        page_number = metadata.get("page_number", "Unknown")
+                        category = metadata.get("category", "Unknown")
 
                         if source_file not in pdf_references:
-                            pdf_references[source_file] = {
-                                'category': category,
-                                'pages': set()
-                            }
-                        pdf_references[source_file]['pages'].add(page_number)
+                            pdf_references[source_file] = {"category": category, "pages": set()}
+                        pdf_references[source_file]["pages"].add(page_number)
 
                     # 画像参照元を集約
                     for result in image_sources:
                         metadata = result.get("metadata", {})
-                        source_file = metadata.get('source_file', 'Unknown')
-                        page_number = metadata.get('page_number', 'Unknown')
-                        category = metadata.get('category', 'Unknown')
+                        source_file = metadata.get("source_file", "Unknown")
+                        page_number = metadata.get("page_number", "Unknown")
+                        category = metadata.get("category", "Unknown")
 
                         if source_file not in pdf_references:
-                            pdf_references[source_file] = {
-                                'category': category,
-                                'pages': set()
-                            }
-                        pdf_references[source_file]['pages'].add(page_number)
+                            pdf_references[source_file] = {"category": category, "pages": set()}
+                        pdf_references[source_file]["pages"].add(page_number)
 
                     # 📸 参照ページプレビュー（上位3-5ページ）
-                    top_pages = st.session_state.rag_engine.get_top_reference_pages(
-                        sources,
-                        top_n=5
-                    )
+                    top_pages = st.session_state.rag_engine.get_top_reference_pages(sources, top_n=5)
 
                     if top_pages:
                         with st.expander(f"📸 参照ページプレビュー ({len(top_pages)}ページ)", expanded=True):
@@ -903,7 +892,7 @@ def main_area():
                             # ページごとにグループ化（PDFファイル別）
                             pages_by_pdf = {}
                             for page_info in top_pages:
-                                source_file = page_info['source_file']
+                                source_file = page_info["source_file"]
                                 if source_file not in pages_by_pdf:
                                     pages_by_pdf[source_file] = []
                                 pages_by_pdf[source_file].append(page_info)
@@ -921,16 +910,17 @@ def main_area():
                                         if pdf_path and pdf_path.exists():
                                             # キーワード抽出（LLM使用）
                                             from src.pdf_page_renderer import extract_keywords_llm
+
                                             keywords = extract_keywords_llm(user_query, st.session_state.rag_engine)
 
                                             # 最大2列でページを表示（グリッドレイアウト維持）
                                             cols_per_row = min(2, len(pages))
                                             for i in range(0, len(pages), cols_per_row):
                                                 cols = st.columns(cols_per_row)
-                                                for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
-                                                    page_num = page_info['page_number']
-                                                    score = page_info.get('score')
-                                                    file_extension = page_info.get('file_extension', '')
+                                                for col_idx, page_info in enumerate(pages[i : i + cols_per_row]):
+                                                    page_num = page_info["page_number"]
+                                                    score = page_info.get("score")
+                                                    file_extension = page_info.get("file_extension", "")
 
                                                     with cols[col_idx]:
                                                         # キャプション作成
@@ -940,32 +930,35 @@ def main_area():
                                                         st.markdown(f"**{caption}**")
 
                                                         # Excelファイルの場合はファイル名とダウンロードボタンを表示
-                                                        if file_extension in ['.xlsx', '.xls']:
+                                                        if file_extension in [".xlsx", ".xls"]:
                                                             st.info(f"📊 Excelファイル: {source_file}")
 
                                                             # 元のExcelファイルパスを取得
                                                             from pathlib import Path
+
                                                             excel_path = Path("data/uploaded_pdfs") / source_file
 
                                                             if excel_path.exists():
-                                                                with open(excel_path, 'rb') as f:
+                                                                with open(excel_path, "rb") as f:
                                                                     st.download_button(
                                                                         label="📥 Excelファイルをダウンロード",
                                                                         data=f.read(),
                                                                         file_name=source_file,
                                                                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                                                        key=f"download_excel_hist_{idx}_{source_file}_{page_num}_{col_idx}"
+                                                                        key=f"download_excel_hist_{idx}_{source_file}_{page_num}_{col_idx}",
                                                                     )
                                                             else:
                                                                 st.warning("元のExcelファイルが見つかりません")
 
                                                             # 内容プレビュー
                                                             with st.expander("📝 内容プレビュー"):
-                                                                st.text(page_info.get('content_preview', ''))
+                                                                st.text(page_info.get("content_preview", ""))
                                                         else:
                                                             # PDFファイルの場合は通常のプレビュー表示
                                                             # ハイライト方式を設定から取得
-                                                            highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
+                                                            highlight_method = st.session_state.config.get(
+                                                                "pdf_highlighting", {}
+                                                            ).get("method", "hybrid")
 
                                                             if highlight_method == "hybrid":
                                                                 # ハイブリッド方式（エンベディング + LLM）
@@ -974,30 +967,32 @@ def main_area():
                                                                     query=user_query,
                                                                     page_numbers=[page_num],
                                                                     rag_engine=st.session_state.rag_engine,
-                                                                    config=st.session_state.config
+                                                                    config=st.session_state.config,
                                                                 )
                                                             else:
                                                                 # キーワード方式（フォールバック）
                                                                 annotations = create_pdf_annotations_pymupdf(
                                                                     pdf_path=pdf_path,
                                                                     search_terms=keywords,
-                                                                    page_numbers=[page_num]  # 1ページのみ
+                                                                    page_numbers=[page_num],  # 1ページのみ
                                                                 )
 
                                                             # PDFビューアーで1ページのみ表示
-                                                            logger.info(f"📄 [HISTORY] Displaying page {page_num} with {len(annotations)} annotations")
+                                                            logger.info(
+                                                                f"📄 [HISTORY] Displaying page {page_num} with {len(annotations)} annotations"
+                                                            )
                                                             pdf_viewer(
                                                                 str(pdf_path),
                                                                 annotations=annotations,
                                                                 pages_to_render=[page_num],  # 該当ページのみ
                                                                 height=700,
                                                                 render_text=True,
-                                                                key=f"pdf_viewer_hist_{idx}_{source_file}_{page_num}_{col_idx}"
+                                                                key=f"pdf_viewer_hist_{idx}_{source_file}_{page_num}_{col_idx}",
                                                             )
 
                                                             # 内容プレビュー
                                                             with st.expander("📝 内容プレビュー"):
-                                                                st.text(page_info.get('content_preview', ''))
+                                                                st.text(page_info.get("content_preview", ""))
                                         else:
                                             st.error(f"PDFファイルが見つかりません: {source_file}")
 
@@ -1013,13 +1008,15 @@ def main_area():
                                     cols_per_row = min(3, len(pages))
                                     for i in range(0, len(pages), cols_per_row):
                                         cols = st.columns(cols_per_row)
-                                        for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
-                                            page_num = page_info['page_number']
-                                            score = page_info.get('score')
+                                        for col_idx, page_info in enumerate(pages[i : i + cols_per_row]):
+                                            page_num = page_info["page_number"]
+                                            score = page_info.get("score")
 
                                             with cols[col_idx]:
                                                 # ハイライト付き画像を取得
-                                                logger.info(f"📸 [HISTORY] About to call extract_page_with_highlight: {source_file} page {page_num}")
+                                                logger.info(
+                                                    f"📸 [HISTORY] About to call extract_page_with_highlight: {source_file} page {page_num}"
+                                                )
                                                 image = extract_page_with_highlight(
                                                     source_file=source_file,
                                                     page_number=page_num,
@@ -1028,9 +1025,11 @@ def main_area():
                                                     _rag_engine=st.session_state.rag_engine,
                                                     _vision_analyzer=st.session_state.vision_analyzer,
                                                     dpi=150,
-                                                    target_width=1000
+                                                    target_width=1000,
                                                 )
-                                                logger.info(f"📸 [HISTORY] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
+                                                logger.info(
+                                                    f"📸 [HISTORY] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}"
+                                                )
 
                                                 if image:
                                                     # キャプション作成
@@ -1042,7 +1041,7 @@ def main_area():
 
                                                     # 内容プレビュー
                                                     with st.expander("📝 内容プレビュー"):
-                                                        st.text(page_info.get('content_preview', ''))
+                                                        st.text(page_info.get("content_preview", ""))
                                                 else:
                                                     st.warning(f"ページ {page_num} の画像を取得できませんでした")
 
@@ -1051,8 +1050,8 @@ def main_area():
                     # PDFファイルごとに表示
                     with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
                         for pdf_idx, (source_file, info) in enumerate(pdf_references.items(), 1):
-                            pages_list = sorted(list(info['pages']))
-                            pages_str = ', '.join(map(str, pages_list))
+                            pages_list = sorted(list(info["pages"]))
+                            pages_str = ", ".join(map(str, pages_list))
 
                             st.markdown(f"**{pdf_idx}. {source_file}**")
                             st.write(f"📂 カテゴリー: {info['category']}")
@@ -1071,13 +1070,12 @@ def main_area():
     # 質問が送信された場合
     if question:
         # カテゴリーフィルター設定
-        category_filter = None if st.session_state.selected_category == "全カテゴリー" else st.session_state.selected_category
+        category_filter = (
+            None if st.session_state.selected_category == "全カテゴリー" else st.session_state.selected_category
+        )
 
         # モデル表示名を取得
-        model_display_names = {
-            "openai": "GPT-4.1",
-            "gemini": "Gemini-2.5-Pro"
-        }
+        model_display_names = {"openai": "GPT-4.1", "gemini": "Gemini-2.5-Pro"}
         current_model_display = model_display_names.get(st.session_state.selected_model, "GPT-4.1")
 
         try:
@@ -1086,10 +1084,7 @@ def main_area():
                 st.markdown(question)
 
             # チャット履歴にユーザーの質問を追加
-            st.session_state.chat_history.append({
-                "role": "user",
-                "content": question
-            })
+            st.session_state.chat_history.append({"role": "user", "content": question})
 
             # アシスタントの回答を表示
             with st.chat_message("assistant"):
@@ -1107,12 +1102,14 @@ def main_area():
                         question,
                         category_filter,
                         model_type=st.session_state.selected_model,
-                        chat_history=chat_history_for_query
+                        chat_history=chat_history_for_query,
                     ):
                         if chunk_data["type"] == "context":
                             # コンテキスト情報を保存
                             context_data = chunk_data
-                            logger.info(f"[DEBUG] Context data received: sources={len(chunk_data.get('sources', {}).get('text', []))} text, {len(chunk_data.get('sources', {}).get('images', []))} images")
+                            logger.info(
+                                f"[DEBUG] Context data received: sources={len(chunk_data.get('sources', {}).get('text', []))} text, {len(chunk_data.get('sources', {}).get('images', []))} images"
+                            )
                         elif chunk_data["type"] == "chunk":
                             full_answer += chunk_data["content"]
                             answer_placeholder.markdown(full_answer + "▌")  # カーソル表示
@@ -1126,9 +1123,11 @@ def main_area():
                             "answer": full_answer,
                             "sources": context_data.get("sources", {}),
                             "context": context_data.get("context", ""),
-                            "images": context_data.get("images", [])
+                            "images": context_data.get("images", []),
                         }
-                        logger.info(f"[DEBUG] result_data constructed: sources={len(result_data.get('sources', {}).get('text', []))} text, {len(result_data.get('sources', {}).get('images', []))} images")
+                        logger.info(
+                            f"[DEBUG] result_data constructed: sources={len(result_data.get('sources', {}).get('text', []))} text, {len(result_data.get('sources', {}).get('images', []))} images"
+                        )
                     else:
                         logger.warning("[DEBUG] context_data is None - result_data remains None")
 
@@ -1144,15 +1143,15 @@ def main_area():
                                 question,
                                 category_filter,
                                 model_type=st.session_state.selected_model,
-                                chat_history=chat_history_for_query
+                                chat_history=chat_history_for_query,
                             )
-                        answer_placeholder.markdown(result_data['answer'])
+                        answer_placeholder.markdown(result_data["answer"])
                     else:
                         raise stream_error
 
                 # 参照元を折りたたみ表示
-                if result_data and result_data.get('sources'):
-                    sources = result_data['sources']
+                if result_data and result_data.get("sources"):
+                    sources = result_data["sources"]
                     # sourcesは辞書形式 {"text": [...], "images": [...]}
                     text_sources = sources.get("text", [])
                     image_sources = sources.get("images", [])
@@ -1165,38 +1164,33 @@ def main_area():
                         # テキスト参照元を集約
                         for result in text_sources:
                             metadata = result.get("metadata", {})
-                            source_file = metadata.get('source_file', 'Unknown')
-                            page_number = metadata.get('page_number', 'Unknown')
-                            category = metadata.get('category', 'Unknown')
+                            source_file = metadata.get("source_file", "Unknown")
+                            page_number = metadata.get("page_number", "Unknown")
+                            category = metadata.get("category", "Unknown")
 
                             if source_file not in pdf_references:
-                                pdf_references[source_file] = {
-                                    'category': category,
-                                    'pages': set()
-                                }
-                            pdf_references[source_file]['pages'].add(page_number)
+                                pdf_references[source_file] = {"category": category, "pages": set()}
+                            pdf_references[source_file]["pages"].add(page_number)
 
                         # 画像参照元を集約
                         for result in image_sources:
                             metadata = result.get("metadata", {})
-                            source_file = metadata.get('source_file', 'Unknown')
-                            page_number = metadata.get('page_number', 'Unknown')
-                            category = metadata.get('category', 'Unknown')
+                            source_file = metadata.get("source_file", "Unknown")
+                            page_number = metadata.get("page_number", "Unknown")
+                            category = metadata.get("category", "Unknown")
 
                             if source_file not in pdf_references:
-                                pdf_references[source_file] = {
-                                    'category': category,
-                                    'pages': set()
-                                }
-                            pdf_references[source_file]['pages'].add(page_number)
+                                pdf_references[source_file] = {"category": category, "pages": set()}
+                            pdf_references[source_file]["pages"].add(page_number)
 
                         # 📸 参照ページプレビュー（上位3-5ページ）
-                        logger.info(f"[DEBUG] Checking page preview condition: result_data={result_data is not None}, has_sources={result_data.get('sources') if result_data else None}")
-                        if result_data and result_data.get('sources'):
+                        logger.info(
+                            f"[DEBUG] Checking page preview condition: result_data={result_data is not None}, has_sources={result_data.get('sources') if result_data else None}"
+                        )
+                        if result_data and result_data.get("sources"):
                             logger.info(f"[DEBUG] Calling get_top_reference_pages with sources")
                             top_pages = st.session_state.rag_engine.get_top_reference_pages(
-                                result_data['sources'],
-                                top_n=5
+                                result_data["sources"], top_n=5
                             )
                             logger.info(f"[DEBUG] get_top_reference_pages returned {len(top_pages)} pages")
                         else:
@@ -1210,7 +1204,7 @@ def main_area():
                                 # ページごとにグループ化（PDFファイル別）
                                 pages_by_pdf = {}
                                 for page_info in top_pages:
-                                    source_file = page_info['source_file']
+                                    source_file = page_info["source_file"]
                                     if source_file not in pages_by_pdf:
                                         pages_by_pdf[source_file] = []
                                     pages_by_pdf[source_file].append(page_info)
@@ -1228,16 +1222,17 @@ def main_area():
                                             if pdf_path and pdf_path.exists():
                                                 # キーワード抽出（LLM使用）
                                                 from src.pdf_page_renderer import extract_keywords_llm
+
                                                 keywords = extract_keywords_llm(question, st.session_state.rag_engine)
 
                                                 # 最大3列でページを表示（グリッドレイアウト維持）
                                                 cols_per_row = min(2, len(pages))
                                                 for i in range(0, len(pages), cols_per_row):
                                                     cols = st.columns(cols_per_row)
-                                                    for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
-                                                        page_num = page_info['page_number']
-                                                        score = page_info.get('score')
-                                                        file_extension = page_info.get('file_extension', '')
+                                                    for col_idx, page_info in enumerate(pages[i : i + cols_per_row]):
+                                                        page_num = page_info["page_number"]
+                                                        score = page_info.get("score")
+                                                        file_extension = page_info.get("file_extension", "")
 
                                                         with cols[col_idx]:
                                                             # キャプション作成
@@ -1247,32 +1242,35 @@ def main_area():
                                                             st.markdown(f"**{caption}**")
 
                                                             # Excelファイルの場合はファイル名とダウンロードボタンを表示
-                                                            if file_extension in ['.xlsx', '.xls']:
+                                                            if file_extension in [".xlsx", ".xls"]:
                                                                 st.info(f"📊 Excelファイル: {source_file}")
 
                                                                 # 元のExcelファイルパスを取得
                                                                 from pathlib import Path
+
                                                                 excel_path = Path("data/uploaded_pdfs") / source_file
 
                                                                 if excel_path.exists():
-                                                                    with open(excel_path, 'rb') as f:
+                                                                    with open(excel_path, "rb") as f:
                                                                         st.download_button(
                                                                             label="📥 Excelファイルをダウンロード",
                                                                             data=f.read(),
                                                                             file_name=source_file,
                                                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                                                            key=f"download_excel_new_{source_file}_{page_num}_{col_idx}"
+                                                                            key=f"download_excel_new_{source_file}_{page_num}_{col_idx}",
                                                                         )
                                                                 else:
                                                                     st.warning("元のExcelファイルが見つかりません")
 
                                                                 # 内容プレビュー
                                                                 with st.expander("📝 内容プレビュー"):
-                                                                    st.text(page_info.get('content_preview', ''))
+                                                                    st.text(page_info.get("content_preview", ""))
                                                             else:
                                                                 # PDFファイルの場合は通常のプレビュー表示
                                                                 # ハイライト方式を設定から取得
-                                                                highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
+                                                                highlight_method = st.session_state.config.get(
+                                                                    "pdf_highlighting", {}
+                                                                ).get("method", "hybrid")
 
                                                                 if highlight_method == "hybrid":
                                                                     # ハイブリッド方式（エンベディング + LLM）
@@ -1281,30 +1279,32 @@ def main_area():
                                                                         query=question,
                                                                         page_numbers=[page_num],
                                                                         rag_engine=st.session_state.rag_engine,
-                                                                        config=st.session_state.config
+                                                                        config=st.session_state.config,
                                                                     )
                                                                 else:
                                                                     # キーワード方式（フォールバック）
                                                                     annotations = create_pdf_annotations_pymupdf(
                                                                         pdf_path=pdf_path,
                                                                         search_terms=keywords,
-                                                                        page_numbers=[page_num]  # 1ページのみ
+                                                                        page_numbers=[page_num],  # 1ページのみ
                                                                     )
 
                                                                 # PDFビューアーで1ページのみ表示
-                                                                logger.info(f"📄 [NEW ANSWER] Displaying page {page_num} with {len(annotations)} annotations")
+                                                                logger.info(
+                                                                    f"📄 [NEW ANSWER] Displaying page {page_num} with {len(annotations)} annotations"
+                                                                )
                                                                 pdf_viewer(
                                                                     str(pdf_path),
                                                                     annotations=annotations,
                                                                     pages_to_render=[page_num],  # 該当ページのみ
                                                                     height=700,
                                                                     render_text=True,
-                                                                    key=f"pdf_viewer_new_{source_file}_{page_num}_{col_idx}"
+                                                                    key=f"pdf_viewer_new_{source_file}_{page_num}_{col_idx}",
                                                                 )
 
                                                                 # 内容プレビュー
                                                                 with st.expander("📝 内容プレビュー"):
-                                                                    st.text(page_info.get('content_preview', ''))
+                                                                    st.text(page_info.get("content_preview", ""))
                                             else:
                                                 st.error(f"PDFファイルが見つかりません: {source_file}")
 
@@ -1314,19 +1314,23 @@ def main_area():
 
                                     else:
                                         # フォールバック: 画像ベースの表示
-                                        st.warning("streamlit-pdf-viewerが利用できません。画像表示にフォールバックします。")
+                                        st.warning(
+                                            "streamlit-pdf-viewerが利用できません。画像表示にフォールバックします。"
+                                        )
 
                                         # 最大3列でページを表示
                                         cols_per_row = min(3, len(pages))
                                         for i in range(0, len(pages), cols_per_row):
                                             cols = st.columns(cols_per_row)
-                                            for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
-                                                page_num = page_info['page_number']
-                                                score = page_info.get('score')
+                                            for col_idx, page_info in enumerate(pages[i : i + cols_per_row]):
+                                                page_num = page_info["page_number"]
+                                                score = page_info.get("score")
 
                                                 with cols[col_idx]:
                                                     # ハイライト付き画像を取得
-                                                    logger.info(f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}")
+                                                    logger.info(
+                                                        f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}"
+                                                    )
                                                     image = extract_page_with_highlight(
                                                         source_file=source_file,
                                                         page_number=page_num,
@@ -1335,9 +1339,11 @@ def main_area():
                                                         _rag_engine=st.session_state.rag_engine,
                                                         _vision_analyzer=st.session_state.vision_analyzer,
                                                         dpi=150,
-                                                        target_width=1000
+                                                        target_width=1000,
                                                     )
-                                                    logger.info(f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}")
+                                                    logger.info(
+                                                        f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}"
+                                                    )
 
                                                     if image:
                                                         # キャプション作成
@@ -1349,7 +1355,7 @@ def main_area():
 
                                                         # 内容プレビュー
                                                         with st.expander("📝 内容プレビュー"):
-                                                            st.text(page_info.get('content_preview', ''))
+                                                            st.text(page_info.get("content_preview", ""))
                                                     else:
                                                         st.warning(f"ページ {page_num} の画像を取得できませんでした")
 
@@ -1358,8 +1364,8 @@ def main_area():
                         # PDFファイルごとに表示
                         with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
                             for pdf_idx, (source_file, info) in enumerate(pdf_references.items(), 1):
-                                pages_list = sorted(list(info['pages']))
-                                pages_str = ', '.join(map(str, pages_list))
+                                pages_list = sorted(list(info["pages"]))
+                                pages_str = ", ".join(map(str, pages_list))
 
                                 st.markdown(f"**{pdf_idx}. {source_file}**")
                                 st.write(f"📂 カテゴリー: {info['category']}")
@@ -1374,11 +1380,9 @@ def main_area():
 
             # チャット履歴にアシスタントの回答を追加（参照元も含む）
             if result_data:
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": result_data['answer'],
-                    "sources": result_data.get('sources', [])
-                })
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": result_data["answer"], "sources": result_data.get("sources", [])}
+                )
 
                 # 再描画して履歴を更新
                 st.rerun()
