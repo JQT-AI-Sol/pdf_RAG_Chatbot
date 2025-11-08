@@ -4,9 +4,9 @@
 
 ## 主な機能
 
-- **PDFアップロード**: 複数のPDFファイルをカテゴリー付きでアップロード
+- **マルチフォーマット対応**: PDF、Word、Excel、PowerPoint、テキストファイルをカテゴリー付きでアップロード
 - **ハイブリッド検索**: テキストと画像（表・グラフ）の両方から検索
-- **Vision AI解析**: GPT-4o（将来的にGPT-5）で表・グラフを解析
+- **Vision AI解析**: GPT-4oまたはGemini Pro Visionで表・グラフを解析
 - **カテゴリーフィルタリング**: ドキュメントカテゴリーで検索範囲を限定
 - **質問応答**: 自然言語での質問に対して、参照元と画像付きで回答
 
@@ -14,9 +14,9 @@
 
 - **UI**: Streamlit
 - **RAGフレームワーク**: LangChain
-- **AI/ML**: OpenAI API (GPT-4o, text-embedding-3-small)
+- **AI/ML**: OpenAI API (GPT-4o, text-embedding-3-small)、Google Gemini API (Gemini 1.5 Pro, Gemini 1.5 Flash)
 - **ベクトルDB**: ChromaDB
-- **PDF処理**: pdfplumber
+- **ドキュメント処理**: pdfplumber、python-docx、openpyxl、python-pptx、pdf2image
 - **言語**: Python 3.10+
 
 ## セットアップ
@@ -45,7 +45,7 @@ OPENAI_API_KEY=sk-your-actual-api-key-here
 
 `config.yaml` でパラメータを調整できます：
 
-- モデルの選択（GPT-4o / GPT-5）
+- モデルの選択（OpenAI GPT-4o、Gemini 1.5 Pro/Flash）
 - チャンクサイズ、検索パラメータ
 - Vision解析のプロンプト
 - カテゴリー設定
@@ -60,8 +60,8 @@ streamlit run app.py
 
 ### 基本的な使い方
 
-1. **PDFアップロード**
-   - サイドバーからPDFファイルを選択
+1. **ドキュメントアップロード**
+   - サイドバーからファイルを選択（PDF、Word、Excel、PowerPoint、テキスト）
    - カテゴリー名を入力（例：「製品マニュアル」「技術仕様書」）
    - 「インデックス作成」ボタンをクリック
 
@@ -72,8 +72,8 @@ streamlit run app.py
 
 ### カテゴリー機能
 
-- **カテゴリーの追加**: PDFアップロード時に新しいカテゴリー名を入力すると自動登録
-- **カテゴリーの選択**: 質問時にドロップダウンから選択
+- **カテゴリーの追加**: ドキュメントアップロード時に新しいカテゴリー名を入力すると自動登録
+- **カテゴリーの選択**: 質問時にドロップダウンから選択（カテゴリー変更時、チャット履歴は自動的にリセットされます）
 - **全カテゴリー検索**: 「全カテゴリー」を選択すると全ドキュメントが対象
 
 ## プロジェクト構造
@@ -109,21 +109,23 @@ PoC_chatbot/
 
 ## 開発状況
 
-現在PoC（Proof of Concept）フェーズです。
+現在PoC（Proof of Concept）として、基本機能は実装完了しています。
 
-### 実装済み
-- ✅ プロジェクト構造
-- ✅ 設定ファイル
-- ✅ 要件定義
+### 実装済み機能
+- ✅ マルチフォーマットドキュメント対応（PDF、Word、Excel、PowerPoint、テキスト）
+- ✅ Office文書のPDF変換と画像抽出
+- ✅ ハイブリッド検索（テキスト + 画像）
+- ✅ Vision AI統合（OpenAI GPT-4o、Google Gemini）
+- ✅ ベクトルDB（ChromaDB）によるセマンティック検索
+- ✅ カテゴリー管理とフィルタリング
+- ✅ StreamlitによるWebUI
+- ✅ チャット履歴管理
+- ✅ 参照元表示（ページプレビュー付き）
 
-### 実装予定（Phase順）
-- [ ] Phase 1: 基本インフラ
-- [ ] Phase 2: PDF処理
-- [ ] Phase 3: Vision AI統合
-- [ ] Phase 4: エンベディング・ベクトルDB
-- [ ] Phase 5: RAGエンジン
-- [ ] Phase 6: UI/UX改善
-- [ ] Phase 7: テスト・調整
+### 継続的改善中
+- 🔄 検索精度の向上
+- 🔄 レスポンス時間の最適化
+- 🔄 UIUXの改善
 
 ## トラブルシューティング
 
