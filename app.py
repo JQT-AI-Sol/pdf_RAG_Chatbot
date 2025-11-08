@@ -86,6 +86,56 @@ def initialize_app():
 
 def sidebar():
     """サイドバーのUI"""
+
+    # チャット設定（最優先で表示）
+    st.sidebar.subheader("🤖 チャット設定")
+
+    # カテゴリー選択
+    try:
+        categories = ["全カテゴリー"] + st.session_state.vector_store.get_all_categories()
+    except Exception as e:
+        st.sidebar.warning(f"カテゴリー取得エラー: {str(e)}")
+        categories = ["全カテゴリー"]
+
+    st.session_state.selected_category = st.sidebar.selectbox(
+        "🔍 検索対象カテゴリー",
+        categories,
+        index=(
+            categories.index(st.session_state.selected_category)
+            if st.session_state.selected_category in categories
+            else 0
+        ),
+        help="質問する対象のカテゴリーを選択してください",
+    )
+
+    # previous_categoryの初期化（セッション状態にない場合）
+    if "previous_category" not in st.session_state:
+        st.session_state.previous_category = st.session_state.selected_category
+
+    # カテゴリー変更を検知してチャット履歴をクリア
+    if st.session_state.selected_category != st.session_state.previous_category:
+        st.session_state.chat_history = []
+        st.session_state.previous_category = st.session_state.selected_category
+        st.info(f"カテゴリーを「{st.session_state.selected_category}」に変更しました。チャット履歴をリセットしました。")
+
+    # AIモデル選択
+    model_options = {"GPT-4.1": "openai", "Gemini-2.5-Pro": "gemini"}
+    current_model_display = [k for k, v in model_options.items() if v == st.session_state.selected_model][0]
+    selected_model_display = st.sidebar.selectbox(
+        "🤖 AIモデル",
+        list(model_options.keys()),
+        index=list(model_options.keys()).index(current_model_display),
+        help="使用するAIモデルを選択",
+    )
+    st.session_state.selected_model = model_options[selected_model_display]
+
+    # チャットリセットボタン
+    if st.sidebar.button("🗑️ チャット履歴をリセット", type="secondary"):
+        st.session_state.chat_history = []
+        st.rerun()
+
+    # ドキュメント管理セクション
+    st.sidebar.markdown("---")
     st.sidebar.title("📁 ドキュメント管理")
 
     # Vision Analyzer警告表示
@@ -218,55 +268,6 @@ def sidebar():
                         st.rerun()
     else:
         st.sidebar.info("登録済みドキュメントがありません")
-
-    # チャット設定
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🤖 チャット設定")
-
-    # カテゴリー選択
-    try:
-        categories = ["全カテゴリー"] + st.session_state.vector_store.get_all_categories()
-    except Exception as e:
-        st.sidebar.warning(f"カテゴリー取得エラー: {str(e)}")
-        categories = ["全カテゴリー"]
-
-    st.session_state.selected_category = st.sidebar.selectbox(
-        "🔍 検索対象カテゴリー",
-        categories,
-        index=(
-            categories.index(st.session_state.selected_category)
-            if st.session_state.selected_category in categories
-            else 0
-        ),
-        help="質問する対象のカテゴリーを選択してください",
-    )
-
-    # previous_categoryの初期化（セッション状態にない場合）
-    if "previous_category" not in st.session_state:
-        st.session_state.previous_category = st.session_state.selected_category
-
-    # カテゴリー変更を検知してチャット履歴をクリア
-    if st.session_state.selected_category != st.session_state.previous_category:
-        st.session_state.chat_history = []
-        st.session_state.previous_category = st.session_state.selected_category
-        st.info(f"カテゴリーを「{st.session_state.selected_category}」に変更しました。チャット履歴をリセットしました。")
-
-    # AIモデル選択
-    model_options = {"GPT-4.1": "openai", "Gemini-2.5-Pro": "gemini"}
-    current_model_display = [k for k, v in model_options.items() if v == st.session_state.selected_model][0]
-    selected_model_display = st.sidebar.selectbox(
-        "🤖 AIモデル",
-        list(model_options.keys()),
-        index=list(model_options.keys()).index(current_model_display),
-        help="使用するAIモデルを選択",
-    )
-    st.session_state.selected_model = model_options[selected_model_display]
-
-    # チャットリセットボタン
-    st.sidebar.markdown("---")
-    if st.sidebar.button("🗑️ チャット履歴をリセット", type="secondary"):
-        st.session_state.chat_history = []
-        st.rerun()
 
 
 def process_documents(uploaded_files, category):
