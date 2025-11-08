@@ -116,6 +116,11 @@ def sidebar():
 
     # ドキュメントアップロード
     st.sidebar.subheader("📄 ドキュメントアップロード")
+
+    # uploader_keyの初期化（セッション状態にない場合）
+    if 'uploader_key' not in st.session_state:
+        st.session_state.uploader_key = 0
+
     uploaded_files = st.sidebar.file_uploader(
         "ファイルを選択 (PDF, Word, Excel, PowerPoint, Text)",
         type=['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt'],
@@ -234,6 +239,10 @@ def sidebar():
         index=categories.index(st.session_state.selected_category) if st.session_state.selected_category in categories else 0,
         help="質問する対象のカテゴリーを選択してください"
     )
+
+    # previous_categoryの初期化（セッション状態にない場合）
+    if 'previous_category' not in st.session_state:
+        st.session_state.previous_category = st.session_state.selected_category
 
     # カテゴリー変更を検知してチャット履歴をクリア
     if st.session_state.selected_category != st.session_state.previous_category:
