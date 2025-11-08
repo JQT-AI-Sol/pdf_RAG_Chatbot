@@ -782,6 +782,7 @@ class RAGEngine:
                     "page_number": int,
                     "score": float,  # rerankスコア（なければNone）
                     "content_preview": str,  # 内容のプレビュー（最初の100文字）
+                    "file_extension": str,  # ファイル拡張子（例: ".xlsx", ".pdf"）
                 }]
         """
         top_pages = []
@@ -799,12 +800,16 @@ class RAGEngine:
             if page_id in seen_pages:
                 continue
 
+            # ファイル拡張子を取得
+            file_extension = Path(source_file).suffix.lower()
+
             # ページ情報を追加
             top_pages.append({
                 "source_file": source_file,
                 "page_number": page_number,
                 "score": result.get("rerank_score"),  # rerankingスコア（なければNone）
                 "content_preview": result.get("content", "")[:100],  # 最初の100文字
+                "file_extension": file_extension,  # ファイル拡張子
             })
 
             seen_pages.add(page_id)

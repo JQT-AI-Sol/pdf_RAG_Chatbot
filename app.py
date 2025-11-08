@@ -76,7 +76,9 @@ def initialize_app():
         )
         st.session_state.chat_history = []
         st.session_state.selected_category = "全カテゴリー"
+        st.session_state.previous_category = "全カテゴリー"
         st.session_state.selected_model = "openai"
+        st.session_state.uploader_key = 0
 
         # Vision Analyzerの状態チェック
         if not st.session_state.vision_analyzer.api_key_valid:
@@ -118,7 +120,8 @@ def sidebar():
         "ファイルを選択 (PDF, Word, Excel, PowerPoint, Text)",
         type=['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt'],
         accept_multiple_files=True,
-        help="対応形式: PDF, Word, Excel, PowerPoint, Text"
+        help="対応形式: PDF, Word, Excel, PowerPoint, Text",
+        key=f"uploader_{st.session_state.uploader_key}"
     )
 
     # カテゴリー入力
@@ -232,6 +235,12 @@ def sidebar():
         help="質問する対象のカテゴリーを選択してください"
     )
 
+    # カテゴリー変更を検知してチャット履歴をクリア
+    if st.session_state.selected_category != st.session_state.previous_category:
+        st.session_state.chat_history = []
+        st.session_state.previous_category = st.session_state.selected_category
+        st.info(f"カテゴリーを「{st.session_state.selected_category}」に変更しました。チャット履歴をリセットしました。")
+
     # AIモデル選択
     model_options = {
         "GPT-4.1": "openai",
@@ -251,15 +260,6 @@ def sidebar():
     if st.sidebar.button("🗑️ チャット履歴をリセット", type="secondary"):
         st.session_state.chat_history = []
         st.rerun()
-
-    # デバッグボタン（開発用）
-    if st.sidebar.button("🔍 DBデータ確認（デバッグ）", type="secondary"):
-        if st.session_state.selected_category != "全カテゴリー":
-            logging.info(f"=== DEBUG: Inspecting data for category '{st.session_state.selected_category}' ===")
-            st.session_state.vector_store.debug_inspect_data(st.session_state.selected_category)
-            st.sidebar.success(f"ログを確認してください（カテゴリー: {st.session_state.selected_category}）")
-        else:
-            st.sidebar.warning("カテゴリーを選択してください")
 
 
 def process_documents(uploaded_files, category):
@@ -581,6 +581,10 @@ def process_documents(uploaded_files, category):
             continue
 
     status_text.success("✅ すべてのPDFの処理が完了しました！")
+
+    # ファイルアップローダーをリセット
+    st.session_state.uploader_key += 1
+    st.rerun()
 
 
 @st.dialog("PDF削除の確認")
@@ -910,57 +914,82 @@ def main_area():
                                             from src.pdf_page_renderer import extract_keywords_llm
                                             keywords = extract_keywords_llm(user_query, st.session_state.rag_engine)
 
-                                            # 最大3列でページを表示（グリッドレイアウト維持）
-                                            cols_per_row = min(3, len(pages))
+                                            # 最大2列でページを表示（グリッドレイアウト維持）
+                                            cols_per_row = min(2, len(pages))
                                             for i in range(0, len(pages), cols_per_row):
                                                 cols = st.columns(cols_per_row)
                                                 for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
                                                     page_num = page_info['page_number']
                                                     score = page_info.get('score')
+                                                    file_extension = page_info.get('file_extension', '')
 
                                                     with cols[col_idx]:
-                                                        # 該当ページのアノテーションのみ生成
-                                                        # ハイライト方式を設定から取得
-                                                        highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
-
-                                                        if highlight_method == "hybrid":
-                                                            # ハイブリッド方式（エンベディング + LLM）
-                                                            annotations = create_pdf_annotations_hybrid(
-                                                                pdf_path=pdf_path,
-                                                                query=user_query,
-                                                                page_numbers=[page_num],
-                                                                rag_engine=st.session_state.rag_engine,
-                                                                config=st.session_state.config
-                                                            )
-                                                        else:
-                                                            # キーワード方式（フォールバック）
-                                                            annotations = create_pdf_annotations_pymupdf(
-                                                                pdf_path=pdf_path,
-                                                                search_terms=keywords,
-                                                                page_numbers=[page_num]  # 1ページのみ
-                                                            )
-
                                                         # キャプション作成
                                                         caption = f"ページ {page_num}"
                                                         if score is not None:
                                                             caption += f" (関連度: {score:.3f})"
                                                         st.markdown(f"**{caption}**")
 
-                                                        # PDFビューアーで1ページのみ表示
-                                                        logger.info(f"📄 [HISTORY] Displaying page {page_num} with {len(annotations)} annotations")
-                                                        pdf_viewer(
-                                                            str(pdf_path),
-                                                            annotations=annotations,
-                                                            pages_to_render=[page_num],  # 該当ページのみ
-                                                            width=350,
-                                                            height=500,
-                                                            render_text=True,
-                                                            key=f"pdf_viewer_hist_{idx}_{source_file}_{page_num}_{col_idx}"
-                                                        )
+                                                        # Excelファイルの場合はファイル名とダウンロードボタンを表示
+                                                        if file_extension in ['.xlsx', '.xls']:
+                                                            st.info(f"📊 Excelファイル: {source_file}")
 
-                                                        # 内容プレビュー
-                                                        with st.expander("📝 内容プレビュー"):
-                                                            st.text(page_info.get('content_preview', ''))
+                                                            # 元のExcelファイルパスを取得
+                                                            from pathlib import Path
+                                                            excel_path = Path("data/uploaded_pdfs") / source_file
+
+                                                            if excel_path.exists():
+                                                                with open(excel_path, 'rb') as f:
+                                                                    st.download_button(
+                                                                        label="📥 Excelファイルをダウンロード",
+                                                                        data=f.read(),
+                                                                        file_name=source_file,
+                                                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                                        key=f"download_excel_hist_{idx}_{source_file}_{page_num}_{col_idx}"
+                                                                    )
+                                                            else:
+                                                                st.warning("元のExcelファイルが見つかりません")
+
+                                                            # 内容プレビュー
+                                                            with st.expander("📝 内容プレビュー"):
+                                                                st.text(page_info.get('content_preview', ''))
+                                                        else:
+                                                            # PDFファイルの場合は通常のプレビュー表示
+                                                            # ハイライト方式を設定から取得
+                                                            highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
+
+                                                            if highlight_method == "hybrid":
+                                                                # ハイブリッド方式（エンベディング + LLM）
+                                                                annotations = create_pdf_annotations_hybrid(
+                                                                    pdf_path=pdf_path,
+                                                                    query=user_query,
+                                                                    page_numbers=[page_num],
+                                                                    rag_engine=st.session_state.rag_engine,
+                                                                    config=st.session_state.config
+                                                                )
+                                                            else:
+                                                                # キーワード方式（フォールバック）
+                                                                annotations = create_pdf_annotations_pymupdf(
+                                                                    pdf_path=pdf_path,
+                                                                    search_terms=keywords,
+                                                                    page_numbers=[page_num]  # 1ページのみ
+                                                                )
+
+                                                            # PDFビューアーで1ページのみ表示
+                                                            logger.info(f"📄 [HISTORY] Displaying page {page_num} with {len(annotations)} annotations")
+                                                            pdf_viewer(
+                                                                str(pdf_path),
+                                                                annotations=annotations,
+                                                                pages_to_render=[page_num],  # 該当ページのみ
+                                                                width=350,
+                                                                height=500,
+                                                                render_text=True,
+                                                                key=f"pdf_viewer_hist_{idx}_{source_file}_{page_num}_{col_idx}"
+                                                            )
+
+                                                            # 内容プレビュー
+                                                            with st.expander("📝 内容プレビュー"):
+                                                                st.text(page_info.get('content_preview', ''))
                                         else:
                                             st.error(f"PDFファイルが見つかりません: {source_file}")
 
@@ -1194,56 +1223,81 @@ def main_area():
                                                 keywords = extract_keywords_llm(question, st.session_state.rag_engine)
 
                                                 # 最大3列でページを表示（グリッドレイアウト維持）
-                                                cols_per_row = min(3, len(pages))
+                                                cols_per_row = min(2, len(pages))
                                                 for i in range(0, len(pages), cols_per_row):
                                                     cols = st.columns(cols_per_row)
                                                     for col_idx, page_info in enumerate(pages[i:i + cols_per_row]):
                                                         page_num = page_info['page_number']
                                                         score = page_info.get('score')
+                                                        file_extension = page_info.get('file_extension', '')
 
                                                         with cols[col_idx]:
-                                                            # 該当ページのアノテーションのみ生成
-                                                            # ハイライト方式を設定から取得
-                                                            highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
-
-                                                            if highlight_method == "hybrid":
-                                                                # ハイブリッド方式（エンベディング + LLM）
-                                                                annotations = create_pdf_annotations_hybrid(
-                                                                    pdf_path=pdf_path,
-                                                                    query=question,
-                                                                    page_numbers=[page_num],
-                                                                    rag_engine=st.session_state.rag_engine,
-                                                                    config=st.session_state.config
-                                                                )
-                                                            else:
-                                                                # キーワード方式（フォールバック）
-                                                                annotations = create_pdf_annotations_pymupdf(
-                                                                    pdf_path=pdf_path,
-                                                                    search_terms=keywords,
-                                                                    page_numbers=[page_num]  # 1ページのみ
-                                                                )
-
                                                             # キャプション作成
                                                             caption = f"ページ {page_num}"
                                                             if score is not None:
                                                                 caption += f" (関連度: {score:.3f})"
                                                             st.markdown(f"**{caption}**")
 
-                                                            # PDFビューアーで1ページのみ表示
-                                                            logger.info(f"📄 [NEW ANSWER] Displaying page {page_num} with {len(annotations)} annotations")
-                                                            pdf_viewer(
-                                                                str(pdf_path),
-                                                                annotations=annotations,
-                                                                pages_to_render=[page_num],  # 該当ページのみ
-                                                                width=350,
-                                                                height=500,
-                                                                render_text=True,
-                                                                key=f"pdf_viewer_new_{source_file}_{page_num}_{col_idx}"
-                                                            )
+                                                            # Excelファイルの場合はファイル名とダウンロードボタンを表示
+                                                            if file_extension in ['.xlsx', '.xls']:
+                                                                st.info(f"📊 Excelファイル: {source_file}")
 
-                                                            # 内容プレビュー
-                                                            with st.expander("📝 内容プレビュー"):
-                                                                st.text(page_info.get('content_preview', ''))
+                                                                # 元のExcelファイルパスを取得
+                                                                from pathlib import Path
+                                                                excel_path = Path("data/uploaded_pdfs") / source_file
+
+                                                                if excel_path.exists():
+                                                                    with open(excel_path, 'rb') as f:
+                                                                        st.download_button(
+                                                                            label="📥 Excelファイルをダウンロード",
+                                                                            data=f.read(),
+                                                                            file_name=source_file,
+                                                                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                                            key=f"download_excel_new_{source_file}_{page_num}_{col_idx}"
+                                                                        )
+                                                                else:
+                                                                    st.warning("元のExcelファイルが見つかりません")
+
+                                                                # 内容プレビュー
+                                                                with st.expander("📝 内容プレビュー"):
+                                                                    st.text(page_info.get('content_preview', ''))
+                                                            else:
+                                                                # PDFファイルの場合は通常のプレビュー表示
+                                                                # ハイライト方式を設定から取得
+                                                                highlight_method = st.session_state.config.get("pdf_highlighting", {}).get("method", "hybrid")
+
+                                                                if highlight_method == "hybrid":
+                                                                    # ハイブリッド方式（エンベディング + LLM）
+                                                                    annotations = create_pdf_annotations_hybrid(
+                                                                        pdf_path=pdf_path,
+                                                                        query=question,
+                                                                        page_numbers=[page_num],
+                                                                        rag_engine=st.session_state.rag_engine,
+                                                                        config=st.session_state.config
+                                                                    )
+                                                                else:
+                                                                    # キーワード方式（フォールバック）
+                                                                    annotations = create_pdf_annotations_pymupdf(
+                                                                        pdf_path=pdf_path,
+                                                                        search_terms=keywords,
+                                                                        page_numbers=[page_num]  # 1ページのみ
+                                                                    )
+
+                                                                # PDFビューアーで1ページのみ表示
+                                                                logger.info(f"📄 [NEW ANSWER] Displaying page {page_num} with {len(annotations)} annotations")
+                                                                pdf_viewer(
+                                                                    str(pdf_path),
+                                                                    annotations=annotations,
+                                                                    pages_to_render=[page_num],  # 該当ページのみ
+                                                                    width=350,
+                                                                    height=500,
+                                                                    render_text=True,
+                                                                    key=f"pdf_viewer_new_{source_file}_{page_num}_{col_idx}"
+                                                                )
+
+                                                                # 内容プレビュー
+                                                                with st.expander("📝 内容プレビュー"):
+                                                                    st.text(page_info.get('content_preview', ''))
                                             else:
                                                 st.error(f"PDFファイルが見つかりません: {source_file}")
 
