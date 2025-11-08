@@ -60,11 +60,11 @@ def initialize_app():
         or "STREAMLIT_SHARING_MODE" in os.environ
     )
     config_file = "config.cloud.yaml" if is_streamlit_cloud else "config.yaml"
-    logger.info(f"Loading config from: {config_file} (is_streamlit_cloud={is_streamlit_cloud})")
     config = load_config(config_file)
 
     # ログ設定
     logger = setup_logging(config)
+    logger.info(f"Loading config from: {config_file} (is_streamlit_cloud={is_streamlit_cloud})")
 
     # セッション状態の初期化
     if "initialized" not in st.session_state:
