@@ -174,10 +174,10 @@ def sidebar():
         st.session_state.uploader_key = 0
 
     uploaded_files = st.sidebar.file_uploader(
-        "ファイルを選択 (PDF, Word, Excel, PowerPoint, Text)",
+        "📁 ドキュメントをアップロード",
         type=["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "txt"],
         accept_multiple_files=True,
-        help="対応形式: PDF, Word, Excel, PowerPoint, Text",
+        help="対応拡張子: .pdf, .docx, .doc, .xlsx, .xls, .pptx, .ppt, .txt",
         key=f"uploader_{st.session_state.uploader_key}",
     )
 
@@ -808,7 +808,12 @@ def main_area():
         #### **Step 1: ドキュメントのアップロード** 📁
         - 左サイドバーの「Browse files」から、ドキュメントを1つまたは複数選択します
         - 最大ファイルサイズ: 50MB/ファイル
-        - PDF, Word, Excel, PowerPoint, Text形式がアップロード可能です
+        - 以下の形式に対応しています：
+          - **PDF**: .pdf
+          - **Word**: .docx, .doc
+          - **Excel**: .xlsx, .xls
+          - **PowerPoint**: .pptx, .ppt
+          - **Text**: .txt
         - Excelファイルは精度が落ちる可能性があるため、PDF化してからアップロードすることをおすすめします
 
         #### **Step 2: カテゴリーの設定** 🏷️
