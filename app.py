@@ -947,7 +947,7 @@ def main_area():
                                         st.markdown(f"**{caption}**")
 
                                         with st.expander("📝 内容プレビュー"):
-                                            st.text(page_info.get("content_preview", ""))
+                                            st.markdown(page_info.get("content_preview", ""))
 
                                 elif STREAMLIT_PDF_VIEWER_AVAILABLE:
                                     # PDFファイルの場合：pdf_viewerを使用して各ページを個別に表示
