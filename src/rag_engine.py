@@ -804,11 +804,21 @@ class RAGEngine:
             file_extension = Path(source_file).suffix.lower()
 
             # ページ情報を追加
+            # content_previewを生成（句点で切れるように）
+            content = result.get("content", "")
+            preview_length = 200  # 最大200文字まで取得
+            preview = content[:preview_length]
+
+            # 句点「。」で切れるようにする（文の途中で終わらないように）
+            last_period = preview.rfind("。")
+            if last_period > 50:  # 最低50文字は確保
+                preview = preview[:last_period + 1]
+
             top_pages.append({
                 "source_file": source_file,
                 "page_number": page_number,
                 "score": result.get("rerank_score"),  # rerankingスコア（なければNone）
-                "content_preview": result.get("content", "")[:100],  # 最初の100文字
+                "content_preview": preview,
                 "file_extension": file_extension,  # ファイル拡張子
             })
 
