@@ -1023,14 +1023,25 @@ def main_area():
                                                         from src.pdf_page_renderer import create_pdf_annotations_from_chunks
 
                                                         chunks = page_info.get("chunks", [])
-                                                        if chunks:
-                                                            annotations = create_pdf_annotations_from_chunks(
-                                                                pdf_path=pdf_path,
-                                                                chunks=chunks,
-                                                                page_numbers=[page_num],
-                                                                rag_engine=st.session_state.rag_engine
-                                                            )
-                                                        else:
+                                                        annotations = []
+
+                                                        # チャンクがある場合はチャンクベースで生成
+                                                        if chunks and len(chunks) > 0:
+                                                            logger.info(f"Trying chunk-based highlighting with {len(chunks)} chunks")
+                                                            try:
+                                                                annotations = create_pdf_annotations_from_chunks(
+                                                                    pdf_path=pdf_path,
+                                                                    chunks=chunks,
+                                                                    page_numbers=[page_num],
+                                                                    rag_engine=st.session_state.rag_engine
+                                                                )
+                                                            except Exception as e:
+                                                                logger.error(f"Chunk-based highlighting failed: {e}")
+                                                                annotations = []
+
+                                                        # チャンクがないまたは失敗した場合はフォールバック
+                                                        if not annotations:
+                                                            logger.info(f"Falling back to keyword/hybrid method")
                                                             # フォールバック: ハイブリッド方式またはキーワード方式
                                                             highlight_method = st.session_state.config.get(
                                                                 "pdf_highlighting", {}
@@ -1350,14 +1361,25 @@ def main_area():
                                                             from src.pdf_page_renderer import create_pdf_annotations_from_chunks
 
                                                             chunks = page_info.get("chunks", [])
-                                                            if chunks:
-                                                                annotations = create_pdf_annotations_from_chunks(
-                                                                    pdf_path=pdf_path,
-                                                                    chunks=chunks,
-                                                                    page_numbers=[page_num],
-                                                                    rag_engine=st.session_state.rag_engine
-                                                                )
-                                                            else:
+                                                            annotations = []
+
+                                                            # チャンクがある場合はチャンクベースで生成
+                                                            if chunks and len(chunks) > 0:
+                                                                logger.info(f"Trying chunk-based highlighting with {len(chunks)} chunks")
+                                                                try:
+                                                                    annotations = create_pdf_annotations_from_chunks(
+                                                                        pdf_path=pdf_path,
+                                                                        chunks=chunks,
+                                                                        page_numbers=[page_num],
+                                                                        rag_engine=st.session_state.rag_engine
+                                                                    )
+                                                                except Exception as e:
+                                                                    logger.error(f"Chunk-based highlighting failed: {e}")
+                                                                    annotations = []
+
+                                                            # チャンクがないまたは失敗した場合はフォールバック
+                                                            if not annotations:
+                                                                logger.info(f"Falling back to keyword/hybrid method")
                                                                 # フォールバック: ハイブリッド方式またはキーワード方式
                                                                 highlight_method = st.session_state.config.get(
                                                                     "pdf_highlighting", {}
