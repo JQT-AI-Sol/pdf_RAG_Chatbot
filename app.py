@@ -1118,22 +1118,22 @@ def main_area():
 
                                 st.markdown("---")
 
-                    # PDFファイルごとに表示
-                    with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
-                        for pdf_idx, (source_file, info) in enumerate(pdf_references.items(), 1):
-                            pages_list = sorted(list(info["pages"]))
-                            pages_str = ", ".join(map(str, pages_list))
+                        # PDFファイルごとに表示
+                        with st.expander(f"📄 参照元PDFファイル ({len(pdf_references)}件)"):
+                            for pdf_idx, (source_file, info) in enumerate(pdf_references.items(), 1):
+                                pages_list = sorted(list(info["pages"]))
+                                pages_str = ", ".join(map(str, pages_list))
 
-                            st.markdown(f"**{pdf_idx}. {source_file}**")
-                            st.write(f"📂 カテゴリー: {info['category']}")
-                            st.write(f"📄 参照ページ: {pages_str}")
+                                st.markdown(f"**{pdf_idx}. {source_file}**")
+                                st.write(f"📂 カテゴリー: {info['category']}")
+                                st.write(f"📄 参照ページ: {pages_str}")
 
-                            # PDFダウンロードボタン
-                            pdf_path = Path("data/uploaded_pdfs") / source_file
-                            show_pdf_link(pdf_path, source_file, key_suffix=f"hist_{idx}_pdf_{pdf_idx}")
+                                # PDFダウンロードボタン
+                                pdf_path = Path("data/uploaded_pdfs") / source_file
+                                show_pdf_link(pdf_path, source_file, key_suffix=f"hist_{idx}_pdf_{pdf_idx}")
 
-                            if pdf_idx < len(pdf_references):
-                                st.markdown("---")
+                                if pdf_idx < len(pdf_references):
+                                    st.markdown("---")
 
     # 標準チャット入力
     question = st.chat_input("💬 質問を入力してください（例: この製品の主な特徴は何ですか？）")
