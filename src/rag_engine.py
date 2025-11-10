@@ -18,6 +18,7 @@ import google.generativeai as genai
 
 from .prompt_templates import RAG_PROMPT_TEMPLATE
 from .reranker import Reranker
+from .cohere_reranker import CohereReranker
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +77,27 @@ class RAGEngine:
         # Reranker初期化（有効な場合のみ）
         self.reranker = None
         if self.rag_config.get("enable_reranking", False):
+            provider = self.reranking_config.get("provider", "local")
+
             try:
-                model_name = self.reranking_config.get("model", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-                self.reranker = Reranker(model_name=model_name)
-                logger.info(f"Reranker initialized: {model_name}")
+                if provider == "cohere":
+                    # Cohere Reranker
+                    cohere_config = self.reranking_config.get("cohere", {})
+                    model_name = cohere_config.get("model", "rerank-multilingual-v3.0")
+                    api_key_env = cohere_config.get("api_key_env", "COHERE_API_KEY")
+                    api_key = os.getenv(api_key_env)
+
+                    self.reranker = CohereReranker(api_key=api_key, model=model_name)
+                    logger.info(f"Cohere Reranker initialized: {model_name}")
+
+                else:
+                    # Local Reranker (default)
+                    model_name = self.reranking_config.get("model", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+                    self.reranker = Reranker(model_name=model_name)
+                    logger.info(f"Local Reranker initialized: {model_name}")
+
             except Exception as e:
-                logger.error(f"Failed to initialize Reranker: {e}")
+                logger.error(f"Failed to initialize Reranker ({provider}): {e}")
                 logger.warning("Continuing without reranking")
 
         # 会話履歴管理の設定

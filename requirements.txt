@@ -43,6 +43,7 @@ langfuse>=2.0.0,<3.0.0
 
 # Reranking (Phase 1: Performance Improvement)
 sentence-transformers>=2.7.0
+cohere>=5.0.0  # Optional: For Cohere Rerank API (better Japanese support)
 
 # BM25 Hybrid Search (Phase 1: Performance Improvement)
 rank-bm25>=0.2.2

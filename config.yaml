@@ -304,10 +304,21 @@ chunking:
 
 # Reranking設定
 reranking:
+  provider: "cohere"  # "local" (ローカルモデル) or "cohere" (Cohere API)
+
+  # ローカルReranker設定（provider="local"の場合）
   model: "cross-encoder/ms-marco-MiniLM-L-6-v2"  # 軽量高速モデル（~80MB）
   # Alternative: "cross-encoder/ms-marco-electra-base" (より高精度だが重い)
+
+  # Cohere Reranker設定（provider="cohere"の場合）
+  cohere:
+    model: "rerank-multilingual-v3.0"  # 日本語に最適（推奨）
+    # Alternative: "rerank-english-v3.0" (英語専用)
+    api_key_env: "COHERE_API_KEY"  # 環境変数名（.envに設定）
+
   top_k_initial: 10  # 初期検索で取得する文書数（vector searchから）
   top_k_final: 5  # Reranking後に返す最終文書数
+  # Note: Cohereの場合、高精度のためtop_k_finalを小さくしても品質維持可能
 
 # BM25ハイブリッド検索設定
 hybrid_search:
