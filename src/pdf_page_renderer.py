@@ -641,7 +641,7 @@ def find_text_positions_in_words(
     page_number: int
 ) -> List[Dict]:
     """
-    単語リストから検索テキストの座標を取得
+    単語リストから検索テキストの座標を取得（文全体対応版）
 
     Args:
         search_text: 検索するテキスト
@@ -652,21 +652,46 @@ def find_text_positions_in_words(
         List[Dict]: 座標のリスト
     """
     positions = []
-    search_text_lower = search_text.lower()
+    search_text_lower = search_text.lower().replace(' ', '').replace('　', '')  # 空白除去
 
-    # 単語をテキスト順に結合して検索
-    for i, word in enumerate(words):
-        word_text = word['text'].lower()
+    # 方法1: 連続する単語群から文全体をマッチング
+    for i in range(len(words)):
+        # 最大100単語まで（文の長さの上限）
+        for j in range(i + 1, min(i + 100, len(words) + 1)):
+            window = words[i:j]
+            window_text = ''.join([w['text'] for w in window]).lower().replace(' ', '').replace('　', '')
 
-        # 部分一致で検索
-        if search_text_lower in word_text or word_text in search_text_lower:
-            positions.append({
-                "text": word['text'],
-                "x0": word['x0'],
-                "y0": word['top'],
-                "x1": word['x1'],
-                "y1": word['bottom'],
-            })
+            if search_text_lower in window_text:
+                # 文全体を囲む矩形座標を計算
+                x0 = min(w['x0'] for w in window)
+                y0 = min(w['top'] for w in window)
+                x1 = max(w['x1'] for w in window)
+                y1 = max(w['bottom'] for w in window)
+
+                positions.append({
+                    "text": search_text,
+                    "x0": x0,
+                    "y0": y0,
+                    "x1": x1,
+                    "y1": y1,
+                })
+                break  # 最初の一致のみ
+
+        if positions:
+            break  # 見つかったら終了
+
+    # 方法2（フォールバック）: 単語単位のマッチング
+    if not positions:
+        for word in words:
+            word_text = word['text'].lower()
+            if search_text_lower in word_text or word_text in search_text_lower:
+                positions.append({
+                    "text": word['text'],
+                    "x0": word['x0'],
+                    "y0": word['top'],
+                    "x1": word['x1'],
+                    "y1": word['bottom'],
+                })
 
     return positions
 

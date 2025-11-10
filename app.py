@@ -994,11 +994,6 @@ def main_area():
                                         pdf_path = get_pdf_path(source_file, st.session_state.vector_store)
 
                                         if pdf_path and pdf_path.exists():
-                                            # キーワード抽出（LLM使用）
-                                            from src.pdf_page_renderer import extract_keywords_llm
-
-                                            keywords = extract_keywords_llm(user_query, st.session_state.rag_engine)
-
                                             # 最大2列でページを表示（グリッドレイアウト維持）
                                             cols_per_row = min(2, len(pages))
                                             for i in range(0, len(pages), cols_per_row):
@@ -1019,48 +1014,16 @@ def main_area():
                                                             image_count = page_info.get("image_count", 0)
                                                             st.caption(f"📊 このページの図表・グラフを参照しています（{image_count}件）")
 
-                                                        # チャンクベースのハイライト生成（Option B実装）
-                                                        from src.pdf_page_renderer import create_pdf_annotations_from_chunks
+                                                        # ハイブリッド方式で文単位ハイライト生成
+                                                        from src.pdf_page_renderer import create_pdf_annotations_hybrid
 
-                                                        chunks = page_info.get("chunks", [])
-                                                        annotations = []
-
-                                                        # チャンクがある場合はチャンクベースで生成
-                                                        if chunks and len(chunks) > 0:
-                                                            logger.info(f"Trying chunk-based highlighting with {len(chunks)} chunks")
-                                                            try:
-                                                                annotations = create_pdf_annotations_from_chunks(
-                                                                    pdf_path=pdf_path,
-                                                                    chunks=chunks,
-                                                                    page_numbers=[page_num],
-                                                                    rag_engine=st.session_state.rag_engine
-                                                                )
-                                                            except Exception as e:
-                                                                logger.error(f"Chunk-based highlighting failed: {e}")
-                                                                annotations = []
-
-                                                        # チャンクがないまたは失敗した場合はフォールバック
-                                                        if not annotations:
-                                                            logger.info(f"Falling back to keyword/hybrid method")
-                                                            # フォールバック: ハイブリッド方式またはキーワード方式
-                                                            highlight_method = st.session_state.config.get(
-                                                                "pdf_highlighting", {}
-                                                            ).get("method", "hybrid")
-
-                                                            if highlight_method == "hybrid":
-                                                                annotations = create_pdf_annotations_hybrid(
-                                                                    pdf_path=pdf_path,
-                                                                    query=user_query,
-                                                                    page_numbers=[page_num],
-                                                                    rag_engine=st.session_state.rag_engine,
-                                                                    config=st.session_state.config,
-                                                                )
-                                                            else:
-                                                                annotations = create_pdf_annotations_pymupdf(
-                                                                    pdf_path=pdf_path,
-                                                                    search_terms=keywords,
-                                                                    page_numbers=[page_num],
-                                                                )
+                                                        annotations = create_pdf_annotations_hybrid(
+                                                            pdf_path=pdf_path,
+                                                            query=user_query,
+                                                            page_numbers=[page_num],
+                                                            rag_engine=st.session_state.rag_engine,
+                                                            config=st.session_state.config,
+                                                        )
 
                                                         # PDFビューアーで1ページのみ表示
                                                         logger.info(
@@ -1332,11 +1295,6 @@ def main_area():
                                             pdf_path = get_pdf_path(source_file, st.session_state.vector_store)
 
                                             if pdf_path and pdf_path.exists():
-                                                # キーワード抽出（LLM使用）
-                                                from src.pdf_page_renderer import extract_keywords_llm
-
-                                                keywords = extract_keywords_llm(question, st.session_state.rag_engine)
-
                                                 # 最大3列でページを表示（グリッドレイアウト維持）
                                                 cols_per_row = min(2, len(pages))
                                                 for i in range(0, len(pages), cols_per_row):
@@ -1357,48 +1315,16 @@ def main_area():
                                                                 image_count = page_info.get("image_count", 0)
                                                                 st.caption(f"📊 このページの図表・グラフを参照しています（{image_count}件）")
 
-                                                            # チャンクベースのハイライト生成（Option B実装）
-                                                            from src.pdf_page_renderer import create_pdf_annotations_from_chunks
+                                                            # ハイブリッド方式で文単位ハイライト生成
+                                                            from src.pdf_page_renderer import create_pdf_annotations_hybrid
 
-                                                            chunks = page_info.get("chunks", [])
-                                                            annotations = []
-
-                                                            # チャンクがある場合はチャンクベースで生成
-                                                            if chunks and len(chunks) > 0:
-                                                                logger.info(f"Trying chunk-based highlighting with {len(chunks)} chunks")
-                                                                try:
-                                                                    annotations = create_pdf_annotations_from_chunks(
-                                                                        pdf_path=pdf_path,
-                                                                        chunks=chunks,
-                                                                        page_numbers=[page_num],
-                                                                        rag_engine=st.session_state.rag_engine
-                                                                    )
-                                                                except Exception as e:
-                                                                    logger.error(f"Chunk-based highlighting failed: {e}")
-                                                                    annotations = []
-
-                                                            # チャンクがないまたは失敗した場合はフォールバック
-                                                            if not annotations:
-                                                                logger.info(f"Falling back to keyword/hybrid method")
-                                                                # フォールバック: ハイブリッド方式またはキーワード方式
-                                                                highlight_method = st.session_state.config.get(
-                                                                    "pdf_highlighting", {}
-                                                                ).get("method", "hybrid")
-
-                                                                if highlight_method == "hybrid":
-                                                                    annotations = create_pdf_annotations_hybrid(
-                                                                        pdf_path=pdf_path,
-                                                                        query=question,
-                                                                        page_numbers=[page_num],
-                                                                        rag_engine=st.session_state.rag_engine,
-                                                                        config=st.session_state.config,
-                                                                    )
-                                                                else:
-                                                                    annotations = create_pdf_annotations_pymupdf(
-                                                                        pdf_path=pdf_path,
-                                                                        search_terms=keywords,
-                                                                        page_numbers=[page_num],
-                                                                    )
+                                                            annotations = create_pdf_annotations_hybrid(
+                                                                pdf_path=pdf_path,
+                                                                query=question,
+                                                                page_numbers=[page_num],
+                                                                rag_engine=st.session_state.rag_engine,
+                                                                config=st.session_state.config,
+                                                            )
 
                                                             # PDFビューアーで1ページのみ表示
                                                             logger.info(

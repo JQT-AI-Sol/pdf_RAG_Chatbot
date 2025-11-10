@@ -264,8 +264,8 @@ pdf_highlighting:
 
   # ハイブリッドモード設定（method="hybrid"の場合）
   hybrid:
-    embedding_threshold: 0.7  # エンベディング類似度閾値（0-1）
-    max_candidates: 10  # Stage 1で絞り込む候補文数
+    embedding_threshold: 0.65  # エンベディング類似度閾値（0-1）- 緩和してより多くの候補を取得
+    max_candidates: 15  # Stage 1で絞り込む候補文数 - 10→15に増加
     max_final: 5  # Stage 2で最終選択する文数
     use_llm_refinement: true  # LLMによる精査を有効化
     fallback_to_keyword: true  # エラー時にキーワード方式にフォールバック
