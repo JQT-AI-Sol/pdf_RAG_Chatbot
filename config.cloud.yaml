@@ -300,7 +300,7 @@ cache:
 
 # 検索設定
 search:
-  top_k_text: 5
+  top_k_text: 10  # 5→10に増加（Reranking用に多めに取得）
   top_k_images: 5
   similarity_threshold: 0.7
   enable_hybrid_search: true

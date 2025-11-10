@@ -342,7 +342,7 @@ cache:
 
 # 検索設定
 search:
-  top_k_text: 5
+  top_k_text: 10  # 5→10に増加（Reranking用に多めに取得）
   top_k_images: 5  # コンテキスト最適化（アップロード画像5枚+検索画像5枚=最大10枚）
   similarity_threshold: 0.7
   enable_hybrid_search: true  # テキストと画像の統合検索
