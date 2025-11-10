@@ -1,6 +1,19 @@
+---
+title: JQIT RAG System
+emoji: 📚
+colorFrom: blue
+colorTo: green
+sdk: streamlit
+sdk_version: "1.32.0"
+app_file: app.py
+pinned: false
+---
+
 # PDF RAGシステム（PoC版）
 
 技術文書・マニュアルのPDFから情報を検索・抽出できるRAGシステムのPoC実装です。表やグラフを含むPDFに対応し、カテゴリー機能で検索範囲を限定できます。
+
+**🚀 Hugging Face Space**: [https://huggingface.co/spaces/ACRMiyamoto/jqit-rag-system](https://huggingface.co/spaces/ACRMiyamoto/jqit-rag-system)
 
 ## 主な機能
 
@@ -49,6 +62,36 @@ OPENAI_API_KEY=sk-your-actual-api-key-here
 - チャンクサイズ、検索パラメータ
 - Vision解析のプロンプト
 - カテゴリー設定
+
+## デプロイ
+
+### Hugging Face Spaceへのデプロイ
+
+1. **リモートリポジトリの追加**
+
+```bash
+git remote add hf https://<USERNAME>:<TOKEN>@huggingface.co/spaces/ACRMiyamoto/jqit-rag-system
+```
+
+2. **コードのプッシュ**
+
+```bash
+git push hf master:main
+```
+
+詳細な手順は `CLAUDE.md` を参照してください。
+
+3. **環境変数の設定**
+
+Hugging Face Spaceの管理画面（Settings）で以下を設定：
+
+- `SUPABASE_URL`: Supabaseプロジェクトの接続URL
+- `SUPABASE_KEY`: Supabaseのサービスロールキー
+- `OPENAI_API_KEY`: OpenAI APIキー
+- `GOOGLE_API_KEY`: Google Gemini APIキー
+- `COHERE_API_KEY`: Cohere Rerank APIキー（オプション）
+- `LANGFUSE_PUBLIC_KEY`: Langfuse公開キー（オプション）
+- `LANGFUSE_SECRET_KEY`: Langfuseシークレットキー（オプション）
 
 ## 使い方
 
