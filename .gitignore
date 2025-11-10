@@ -83,3 +83,4 @@ check_supabase_*.py
 .claude/
 cache/
 tools/
+CLAUDE.md
