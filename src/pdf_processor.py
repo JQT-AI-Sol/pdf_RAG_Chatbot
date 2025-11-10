@@ -84,8 +84,22 @@ class PDFProcessor:
             with pdfplumber.open(pdf_path) as pdf:
                 page = pdf.pages[page_num - 1]  # 0-indexed
 
-                # テキスト抽出
-                text = page.extract_text()
+                # 画像と表を先に抽出（表の領域を把握するため）
+                page_data = self._extract_images_from_page(page, page_num, pdf_path)
+
+                # 表の領域を除外したページテキストを抽出
+                filtered_page = page
+                table_bboxes = page_data.get("table_bboxes", [])
+
+                if table_bboxes and self.pdf_config.get("exclude_tables_from_page_text", True):
+                    # 表の領域をページから除外
+                    for bbox in table_bboxes:
+                        filtered_page = filtered_page.outside_bbox(bbox)
+                    text = filtered_page.extract_text() or ""
+                    logger.debug(f"Page {page_num}: Excluded {len(table_bboxes)} table regions from page text")
+                else:
+                    # 通常のテキスト抽出
+                    text = page.extract_text()
 
                 # テキストが抽出できない、または非常に少ない場合
                 # → 画像ベースPDFまたは特殊エンコーディングの可能性
@@ -130,12 +144,10 @@ class PDFProcessor:
                     logger.info(f"Page {page_num}: 全体画像として保存しました ({image_path})")
                 else:
                     # テキストが抽出できた場合は通常処理
+                    # 表の領域を除外したテキストでチャンク化
                     page_result["text_chunks"].extend(
                         self._create_text_chunks(text, page_num, source_file, category)
                     )
-
-                    # 画像と表を抽出
-                    page_data = self._extract_images_from_page(page, page_num, pdf_path)
 
                     # 画像データを追加
                     page_result["images"].extend(page_data["images"])
@@ -536,6 +548,8 @@ class PDFProcessor:
                                     "text": f"\n[表 {table_idx + 1}]\n{markdown}\n",
                                     "page_number": page_num,
                                 })
+                                # Markdown化された表のbboxを記録
+                                table_bboxes.append(table.bbox)
                                 logger.debug(f"Converted simple table {table_idx} to Markdown on page {page_num}")
 
                     except Exception as e:
@@ -687,7 +701,7 @@ class PDFProcessor:
         except Exception as e:
             logger.error(f"Error extracting images from page {page_num}: {e}")
 
-        return {"images": images, "table_markdowns": table_markdowns}
+        return {"images": images, "table_markdowns": table_markdowns, "table_bboxes": table_bboxes}
 
     def save_extracted_image(self, image: Image.Image, output_path: str) -> bool:
         """
