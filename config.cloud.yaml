@@ -268,7 +268,7 @@ chunking:
 
 # Reranking設定
 reranking:
-  provider: "local"  # "local" (ローカルモデル) or "cohere" (Cohere API)
+  provider: "cohere"  # "local" (ローカルモデル) or "cohere" (Cohere API)
 
   # ローカルReranker設定（provider="local"の場合）
   model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
