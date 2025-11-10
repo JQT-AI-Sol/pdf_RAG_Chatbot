@@ -792,10 +792,10 @@ class RAGEngine:
         seen_pages = set()  # (source_file, page_number) の重複チェック用
 
         # ページごとのチャンクと画像を集計
-        page_chunks = {}  # {(source_file, page_number): [chunks]}
+        page_chunks = {}  # {(source_file, page_number): [chunks with scores]}
         page_images = {}  # {(source_file, page_number): count}
 
-        # テキスト検索結果からチャンクを集約
+        # テキスト検索結果からチャンクを集約（スコア付き）
         for result in search_results.get("text", []):
             source_file = result.get("source_file", "")
             page_number = result.get("page_number", 0)
@@ -804,9 +804,13 @@ class RAGEngine:
             if page_id not in page_chunks:
                 page_chunks[page_id] = []
 
+            # スコア情報を含める（rerank_score優先、なければsimilarity）
+            score = result.get("rerank_score") or result.get("similarity", 0.0)
+
             page_chunks[page_id].append({
                 "content": result.get("content", ""),
-                "page": page_number
+                "page": page_number,
+                "score": score  # スコアを追加
             })
 
         # 画像検索結果から画像数を集計
@@ -842,13 +846,22 @@ class RAGEngine:
 
             # ページ情報を追加
             image_count = page_images.get(page_id, 0)
+
+            # ページ内のチャンクをスコア順にソートして上位N件のみ取得
+            chunks = page_chunks.get(page_id, [])
+            chunks_sorted = sorted(chunks, key=lambda x: x.get("score", 0.0), reverse=True)
+
+            # 設定から最大チャンク数を取得（デフォルト: 3）
+            max_chunks = self.config.get("pdf_highlighting", {}).get("max_chunks_per_page", 3)
+            top_chunks = chunks_sorted[:max_chunks]
+
             top_pages.append({
                 "source_file": source_file,
                 "page_number": page_number,
                 "score": result.get("rerank_score"),  # rerankingスコア（なければNone）
                 "content_preview": preview,
                 "file_extension": file_extension,
-                "chunks": page_chunks.get(page_id, []),  # チャンク全文リスト
+                "chunks": top_chunks,  # 上位3チャンクのみ
                 "has_image": image_count > 0,  # 画像があるか
                 "image_count": image_count,  # 画像の数
             })

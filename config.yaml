@@ -243,6 +243,7 @@ pdf_highlighting:
   # 表示設定
   max_pages_to_display: 5  # 表示する最大ページ数
   columns_per_row: 3  # 1行あたりの列数（グリッドレイアウト）
+  max_chunks_per_page: 3  # 1ページあたりの最大ハイライトチャンク数（多すぎる場合は上位のみ）
 
   # 画像生成設定
   dpi: 150  # ページ画像の解像度（高いほど鮮明だが重い）
