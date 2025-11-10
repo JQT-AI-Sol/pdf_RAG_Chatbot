@@ -230,9 +230,9 @@ pdf_highlighting:
     max_keywords: 10
     min_keyword_length: 2
   hybrid:
-    embedding_threshold: 0.5
-    max_candidates: 20
-    max_final: 8
+    embedding_threshold: 0.7  # より厳密に関連性の高い文のみを選択（ピンポイントハイライト）
+    max_candidates: 10  # 候補数を削減
+    max_final: 3  # 最終的なハイライト箇所を3つまでに制限
     use_llm_refinement: true
     fallback_to_keyword: true
   keyword:

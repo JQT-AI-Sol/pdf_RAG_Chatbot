@@ -970,6 +970,35 @@ class VectorStore:
                 logger.error(f"Error registering PDF in Supabase: {e}")
                 raise
 
+    def get_chunks_by_page(self, source_file: str, page_number: int) -> List[Dict]:
+        """
+        指定されたファイルとページ番号のチャンクを取得
+
+        Args:
+            source_file: ソースファイル名
+            page_number: ページ番号
+
+        Returns:
+            List[Dict]: チャンクのリスト（content, page_number等を含む）
+        """
+        if self.provider == 'supabase':
+            try:
+                result = self.client.table(self.text_table).select(
+                    'content, page_number, chunk_index'
+                ).eq('source_file', source_file).eq('page_number', page_number).order(
+                    'chunk_index'
+                ).execute()
+
+                logger.debug(f"Retrieved {len(result.data)} chunks for {source_file} page {page_number}")
+                return result.data
+            except Exception as e:
+                logger.error(f"Error retrieving chunks: {e}")
+                return []
+        else:
+            # ChromaDB の場合は未実装
+            logger.warning("get_chunks_by_page is only supported for Supabase provider")
+            return []
+
     def upload_pdf_to_storage(self, pdf_path: str, filename: str, category: str) -> str:
         """
         PDFファイルをSupabase Storageにアップロード

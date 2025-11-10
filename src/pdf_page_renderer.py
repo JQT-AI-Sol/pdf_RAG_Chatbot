@@ -489,7 +489,9 @@ def create_pdf_annotations_hybrid(
     query: str,
     page_numbers: List[int],
     rag_engine,
-    config: dict
+    config: dict,
+    vector_store=None,
+    source_file: str = None
 ) -> List[Dict]:
     """
     ハイブリッドアプローチでPDFアノテーションを生成
@@ -504,6 +506,8 @@ def create_pdf_annotations_hybrid(
         page_numbers: 検索対象ページ番号リスト（1始まり）
         rag_engine: RAGEngineインスタンス
         config: 設定辞書
+        vector_store: VectorStoreインスタンス（DBチャンク取得用、省略可）
+        source_file: ソースファイル名（DBチャンク取得用、省略可）
 
     Returns:
         List[Dict]: streamlit-pdf-viewer用のアノテーション形式
@@ -547,7 +551,22 @@ def create_pdf_annotations_hybrid(
             for page_num in valid_page_numbers:
                 try:
                     page = pdf.pages[page_num - 1]
-                    page_text = page.extract_text()
+
+                    # Get page text from database chunks (for PowerPoint-converted PDFs)
+                    page_text = ""
+                    if vector_store and source_file:
+                        try:
+                            chunks = vector_store.get_chunks_by_page(source_file, page_num)
+                            if chunks:
+                                page_text = "\n\n".join([chunk["content"] for chunk in chunks])
+                                logger.info(f"📄 Page {page_num}: Using {len(chunks)} DB chunks ({len(page_text)} chars)")
+                        except Exception as e:
+                            logger.warning(f"   Failed to get DB chunks for page {page_num}: {e}")
+
+                    # Fallback to PDF extraction if no DB chunks found
+                    if not page_text:
+                        page_text = page.extract_text()
+                        logger.info(f"📄 Page {page_num}: Using PDF extraction ({len(page_text) if page_text else 0} chars)")
 
                     if not page_text:
                         logger.warning(f"   Page {page_num} has no extractable text")

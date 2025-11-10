@@ -1046,6 +1046,8 @@ def main_area():
                                                             page_numbers=[page_num],
                                                             rag_engine=st.session_state.rag_engine,
                                                             config=st.session_state.config,
+                                                            vector_store=st.session_state.vector_store,
+                                                            source_file=source_file,
                                                         )
 
                                                         # PDFビューアーで1ページのみ表示
@@ -1347,6 +1349,8 @@ def main_area():
                                                                 page_numbers=[page_num],
                                                                 rag_engine=st.session_state.rag_engine,
                                                                 config=st.session_state.config,
+                                                                vector_store=st.session_state.vector_store,
+                                                                source_file=source_file,
                                                             )
 
                                                             # PDFビューアーで1ページのみ表示
