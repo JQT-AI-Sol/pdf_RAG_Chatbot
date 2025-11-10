@@ -769,7 +769,7 @@ class RAGEngine:
         top_n: int = 5,
     ) -> List[Dict[str, Any]]:
         """
-        検索結果から関連度の高いトップNページを抽出
+        検索結果から関連度の高いトップNページを抽出（チャンク全文と画像情報を含む）
 
         Args:
             search_results: ベクトル検索結果（rerankingスコア含む）
@@ -781,19 +781,46 @@ class RAGEngine:
                     "source_file": str,
                     "page_number": int,
                     "score": float,  # rerankスコア（なければNone）
-                    "content_preview": str,  # 内容のプレビュー（最初の100文字）
+                    "content_preview": str,  # 内容のプレビュー（最初の200文字）
                     "file_extension": str,  # ファイル拡張子（例: ".xlsx", ".pdf"）
+                    "chunks": [{"content": str, "page": int}],  # このページのチャンク全文
+                    "has_image": bool,  # 画像参照があるか
+                    "image_count": int,  # 画像の数
                 }]
         """
         top_pages = []
         seen_pages = set()  # (source_file, page_number) の重複チェック用
 
-        # テキスト検索結果から抽出
+        # ページごとのチャンクと画像を集計
+        page_chunks = {}  # {(source_file, page_number): [chunks]}
+        page_images = {}  # {(source_file, page_number): count}
+
+        # テキスト検索結果からチャンクを集約
         for result in search_results.get("text", []):
             source_file = result.get("source_file", "")
             page_number = result.get("page_number", 0)
+            page_id = (source_file, page_number)
 
-            # ページ識別子
+            if page_id not in page_chunks:
+                page_chunks[page_id] = []
+
+            page_chunks[page_id].append({
+                "content": result.get("content", ""),
+                "page": page_number
+            })
+
+        # 画像検索結果から画像数を集計
+        for result in search_results.get("images", []):
+            source_file = result.get("source_file", "")
+            page_number = result.get("page_number", 0)
+            page_id = (source_file, page_number)
+
+            page_images[page_id] = page_images.get(page_id, 0) + 1
+
+        # テキスト検索結果から上位ページを抽出
+        for result in search_results.get("text", []):
+            source_file = result.get("source_file", "")
+            page_number = result.get("page_number", 0)
             page_id = (source_file, page_number)
 
             # 重複チェック
@@ -803,7 +830,6 @@ class RAGEngine:
             # ファイル拡張子を取得
             file_extension = Path(source_file).suffix.lower()
 
-            # ページ情報を追加
             # content_previewを生成（句点で切れるように）
             content = result.get("content", "")
             preview_length = 200  # 最大200文字まで取得
@@ -814,12 +840,17 @@ class RAGEngine:
             if last_period > 50:  # 最低50文字は確保
                 preview = preview[:last_period + 1]
 
+            # ページ情報を追加
+            image_count = page_images.get(page_id, 0)
             top_pages.append({
                 "source_file": source_file,
                 "page_number": page_number,
                 "score": result.get("rerank_score"),  # rerankingスコア（なければNone）
                 "content_preview": preview,
-                "file_extension": file_extension,  # ファイル拡張子
+                "file_extension": file_extension,
+                "chunks": page_chunks.get(page_id, []),  # チャンク全文リスト
+                "has_image": image_count > 0,  # 画像があるか
+                "image_count": image_count,  # 画像の数
             })
 
             seen_pages.add(page_id)
@@ -828,5 +859,33 @@ class RAGEngine:
             if len(top_pages) >= top_n:
                 break
 
-        logger.info(f"Extracted {len(top_pages)} unique pages from search results")
+        # 画像のみのページも追加（まだtop_nに達していない場合）
+        if len(top_pages) < top_n:
+            for result in search_results.get("images", []):
+                source_file = result.get("source_file", "")
+                page_number = result.get("page_number", 0)
+                page_id = (source_file, page_number)
+
+                # 既に追加済みまたは目標数に達した場合はスキップ
+                if page_id in seen_pages or len(top_pages) >= top_n:
+                    continue
+
+                file_extension = Path(source_file).suffix.lower()
+                image_count = page_images.get(page_id, 0)
+
+                top_pages.append({
+                    "source_file": source_file,
+                    "page_number": page_number,
+                    "score": result.get("rerank_score"),
+                    "content_preview": result.get("description", "（画像のみのページ）"),
+                    "file_extension": file_extension,
+                    "chunks": page_chunks.get(page_id, []),
+                    "has_image": True,
+                    "image_count": image_count,
+                })
+
+                seen_pages.add(page_id)
+
+        logger.info(f"Extracted {len(top_pages)} unique pages from search results "
+                   f"({sum(1 for p in top_pages if p['has_image'])} with images)")
         return top_pages

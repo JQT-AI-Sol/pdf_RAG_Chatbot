@@ -671,6 +671,269 @@ def find_text_positions_in_words(
     return positions
 
 
+def create_pdf_annotations_from_chunks(
+    pdf_path: Path,
+    chunks: List[Dict],
+    page_numbers: List[int],
+    rag_engine=None
+) -> List[Dict]:
+    """
+    ベクトル検索結果のチャンク全文を使ってPDFアノテーションを生成（Option B実装）
+
+    3段階フォールバック方式:
+    1. チャンク全文で完全一致検索
+    2. 文単位に分割して部分一致検索
+    3. LLMキーワード抽出でキーワード検索
+
+    Args:
+        pdf_path: PDFファイルのパス
+        chunks: ベクトル検索結果のチャンクリスト
+            [{"content": "チャンクの全文", "page": 1}, ...]
+        page_numbers: 検索対象ページ番号リスト（1始まり）
+        rag_engine: RAGEngineインスタンス（LLMキーワード抽出用、省略可）
+
+    Returns:
+        List[Dict]: streamlit-pdf-viewer用のアノテーション形式
+    """
+    import unicodedata
+    import re
+
+    logger.info(f"🔍 create_pdf_annotations_from_chunks() called")
+    logger.info(f"   pdf_path={pdf_path}")
+    logger.info(f"   chunks count={len(chunks)}")
+    logger.info(f"   page_numbers={page_numbers}")
+
+    annotations = []
+
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            total_pages = len(pdf.pages)
+            logger.info(f"📚 PDF has {total_pages} pages")
+
+            # ページ番号の範囲チェック
+            valid_page_numbers = []
+            for page_num in page_numbers:
+                if 1 <= page_num <= total_pages:
+                    valid_page_numbers.append(page_num)
+                else:
+                    logger.warning(f"⚠️ Page {page_num} is out of range - skipping")
+
+            if not valid_page_numbers:
+                logger.warning(f"No valid page numbers to process")
+                return []
+
+            # チャンクをページごとにグループ化
+            chunks_by_page = {}
+            for chunk in chunks:
+                page = chunk.get('page', 0)
+                if page in valid_page_numbers:
+                    if page not in chunks_by_page:
+                        chunks_by_page[page] = []
+                    chunks_by_page[page].append(chunk.get('content', ''))
+
+            logger.info(f"Grouped chunks into {len(chunks_by_page)} pages")
+
+            for page_num in valid_page_numbers:
+                try:
+                    page = pdf.pages[page_num - 1]
+                    page_text = page.extract_text()
+                    page_height = page.height
+
+                    if not page_text:
+                        logger.warning(f"   Page {page_num} has no extractable text")
+                        continue
+
+                    logger.info(f"📄 Processing page {page_num} ({len(page_text)} chars)")
+
+                    # このページのチャンク
+                    page_chunks = chunks_by_page.get(page_num, [])
+                    if not page_chunks:
+                        logger.debug(f"   No chunks for page {page_num}")
+                        continue
+
+                    logger.info(f"   Found {len(page_chunks)} chunks for this page")
+
+                    words = page.extract_words()
+                    if not words:
+                        logger.warning(f"   Page {page_num} has no extractable words")
+                        continue
+
+                    # 各チャンクをハイライト
+                    for chunk_idx, chunk_text in enumerate(page_chunks):
+                        if not chunk_text or not chunk_text.strip():
+                            continue
+
+                        # Unicode正規化
+                        chunk_normalized = unicodedata.normalize('NFC', chunk_text.strip())
+
+                        logger.info(f"   Chunk {chunk_idx + 1}: '{chunk_normalized[:50]}...' (len={len(chunk_normalized)})")
+
+                        # Strategy 1: チャンク全文で検索
+                        positions = _find_exact_chunk_in_page(
+                            chunk_normalized,
+                            page_text,
+                            words,
+                            page_num
+                        )
+
+                        # Strategy 2: 文単位に分割して検索
+                        if not positions:
+                            logger.info(f"      Strategy 1 (full chunk) failed, trying sentence split...")
+                            sentences = split_text_into_sentences(chunk_normalized)
+                            for sent in sentences[:5]:  # 上位5文まで
+                                sent_positions = _find_exact_chunk_in_page(
+                                    sent['text'],
+                                    page_text,
+                                    words,
+                                    page_num
+                                )
+                                positions.extend(sent_positions)
+
+                        # Strategy 3: LLMキーワード抽出でフォールバック
+                        if not positions and rag_engine:
+                            logger.info(f"      Strategy 2 (sentences) failed, trying LLM keyword extraction...")
+                            keywords = extract_keywords_llm(chunk_normalized, rag_engine)
+                            for kw in keywords[:10]:  # 上位10キーワード
+                                if len(kw) < 2:
+                                    continue
+                                kw_positions = _find_keyword_in_words(kw, words)
+                                positions.extend(kw_positions)
+
+                        # アノテーションに変換
+                        for pos in positions:
+                            annotations.append({
+                                "page": page_num,
+                                "x": float(pos["x0"]),
+                                "y": float(pos["y0"]),
+                                "width": float(pos["x1"] - pos["x0"]),
+                                "height": float(pos["y1"] - pos["y0"]),
+                                "color": "yellow",
+                                "border": "solid"
+                            })
+
+                        logger.info(f"      → Created {len([a for a in annotations if a['page'] == page_num])} annotations")
+
+                except Exception as e:
+                    logger.error(f"Error processing page {page_num}: {e}", exc_info=True)
+                    continue
+
+        logger.info(f"📊 Summary: Created {len(annotations)} annotations from {len(chunks)} chunks")
+        return annotations
+
+    except Exception as e:
+        logger.error(f"Error creating annotations from chunks: {e}", exc_info=True)
+        return []
+
+
+def _find_exact_chunk_in_page(
+    chunk_text: str,
+    page_text: str,
+    words: List[Dict],
+    page_num: int
+) -> List[Dict]:
+    """
+    チャンクテキストをPDFページ内で検索し、座標を返す
+
+    Args:
+        chunk_text: 検索するチャンクテキスト
+        page_text: ページの全文
+        words: pdfplumberのextract_words()の出力
+        page_num: ページ番号
+
+    Returns:
+        List[Dict]: 座標のリスト
+    """
+    import unicodedata
+    import re
+
+    positions = []
+
+    # Unicode正規化（NFC）
+    chunk_normalized = unicodedata.normalize('NFC', chunk_text.strip())
+    page_normalized = unicodedata.normalize('NFC', page_text)
+
+    # 空白・改行を正規化
+    chunk_clean = re.sub(r'\s+', ' ', chunk_normalized)
+    page_clean = re.sub(r'\s+', ' ', page_normalized)
+
+    # 完全一致チェック
+    if chunk_clean.lower() not in page_clean.lower():
+        # NFD正規化も試す
+        chunk_nfd = unicodedata.normalize('NFD', chunk_text.strip())
+        page_nfd = unicodedata.normalize('NFD', page_text)
+        chunk_clean_nfd = re.sub(r'\s+', ' ', chunk_nfd)
+        page_clean_nfd = re.sub(r'\s+', ' ', page_nfd)
+
+        if chunk_clean_nfd.lower() not in page_clean_nfd.lower():
+            return []
+
+        # NFDでマッチした場合
+        chunk_clean = chunk_clean_nfd
+
+    # チャンクのトークン（単語）を抽出
+    chunk_tokens = chunk_clean.split()
+
+    # ページ内の単語から、チャンクのトークンに一致するものを探す
+    matching_words = []
+    for word in words:
+        word_text = word['text'].strip()
+        word_normalized = unicodedata.normalize('NFC', word_text)
+
+        for token in chunk_tokens:
+            # トークンが単語に含まれる、または単語がトークンに含まれる
+            if (token.lower() in word_normalized.lower() or
+                word_normalized.lower() in token.lower()):
+                matching_words.append(word)
+                break
+
+    # 座標リストを返す
+    for word in matching_words:
+        positions.append({
+            "text": word['text'],
+            "x0": word['x0'],
+            "y0": word['top'],
+            "x1": word['x1'],
+            "y1": word['bottom'],
+        })
+
+    logger.debug(f"   _find_exact_chunk_in_page: {len(positions)} positions found")
+    return positions
+
+
+def _find_keyword_in_words(
+    keyword: str,
+    words: List[Dict]
+) -> List[Dict]:
+    """
+    キーワードを単語リストから検索して座標を返す
+
+    Args:
+        keyword: 検索キーワード
+        words: pdfplumberのextract_words()の出力
+
+    Returns:
+        List[Dict]: 座標のリスト
+    """
+    import unicodedata
+
+    positions = []
+    keyword_normalized = unicodedata.normalize('NFC', keyword.strip()).lower()
+
+    for word in words:
+        word_text = unicodedata.normalize('NFC', word['text']).lower()
+
+        if keyword_normalized in word_text:
+            positions.append({
+                "text": word['text'],
+                "x0": word['x0'],
+                "y0": word['top'],
+                "x1": word['x1'],
+                "y1": word['bottom'],
+            })
+
+    return positions
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def extract_page_as_image(
     source_file: str,
@@ -915,7 +1178,7 @@ def _japanese_aware_tokenize(text: str) -> List[str]:
 
 def extract_keywords_llm(query: str, _rag_engine) -> List[str]:
     """
-    LLMを使用してクエリから重要キーワードのみを抽出
+    LLMを使用してクエリから重要キーワードのみを抽出（文脈判断版）
 
     Args:
         query: ユーザークエリ
@@ -942,13 +1205,19 @@ def extract_keywords_llm(query: str, _rag_engine) -> List[str]:
 - 指示語（この、その、あの、どの、どれ、いつ、どこ）
 - 一般的な動詞（する、ある、いる、なる、行う、示す）
 - 疑問詞単体（何、誰、いつ、どこ、なぜ、どう）
-- 1-2文字の断片や活用語尾
 
 **抽出すべきもの:**
 - 名詞（特に固有名詞、専門用語、組織名、人名）
 - 重要な動詞・形容詞（核心的な動作や状態）
-- 数値や日付
 - 複合語（例: 「因果関係」「認定否認」）
+
+**数字・短文の扱い（文脈で判断）:**
+- ✅ 抽出すべき数字: 年度（2023年）、金額（100万円）、比率（50%）、特定の番号（第5条、3項）
+- ❌ 抽出しないもの: ページ番号、図表番号、一般的な序数（1つ、2つ）
+- ✅ 抽出すべき短文: 固有名詞や専門用語（AI、IoT、GDP）
+- ❌ 抽出しないもの: 一般的な1文字の助詞や単位（円、人、件）
+
+**重要:** 質問の文脈から、どの数字や短文がドキュメント内で重要かを判断してください。
 
 質問: {query}
 
@@ -962,7 +1231,8 @@ def extract_keywords_llm(query: str, _rag_engine) -> List[str]:
         keywords = []
         for k in keywords_text.replace('、', ',').split(','):
             k = k.strip()
-            if k and len(k) >= 2:  # 1文字キーワードは除外
+            # LLMに任せるため、長さチェックを緩和（1文字も許可、ただし空文字は除外）
+            if k:
                 keywords.append(k)
 
         logger.info(f"🤖 LLM keyword extraction: '{query}' -> {keywords}")
