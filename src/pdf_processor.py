@@ -366,8 +366,10 @@ class PDFProcessor:
             return True
 
         # 結合セル（None値）が多い場合も複雑と判定
+        # 統計マトリクス（通常は結合セルなし）をMarkdown化するため、閾値を高めに設定
+        merged_cell_threshold = self.pdf_config.get("merged_cell_threshold", 0.4)  # デフォルト40%
         none_count = sum(1 for row in table_data for cell in row if cell is None)
-        if none_count > total_cells * 0.2:  # 20%以上がNoneなら複雑
+        if none_count > total_cells * merged_cell_threshold:
             return True
 
         return False

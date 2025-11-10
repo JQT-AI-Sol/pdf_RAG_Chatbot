@@ -59,7 +59,8 @@ pdf_processing:
   # 表の処理設定
   extract_tables_as_markdown: true  # 表をMarkdown形式で抽出（並列処理で高速化）
   table_classification: true  # シンプル/複雑を自動分類
-  complex_table_threshold: 20  # 20セル以上または結合セルありで複雑と判定（Vision AI使用）
+  complex_table_threshold: 100  # 100セル以上で複雑と判定（10×10までMarkdown化）
+  merged_cell_threshold: 0.4  # 結合セルが40%以上で複雑と判定（統計マトリクスはMarkdown優先）
 
   # 表検出の最適化設定（速度重視）
   table_detection_strategy: "fast"  # "fast" or "accurate" (デフォルト: fast)
