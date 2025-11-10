@@ -1224,9 +1224,12 @@ def _japanese_aware_tokenize(text: str) -> List[str]:
     return tokens
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def extract_keywords_llm(query: str, _rag_engine) -> List[str]:
     """
     LLMを使用してクエリから重要キーワードのみを抽出（文脈判断版）
+
+    キャッシュ: 同じクエリなら1回だけLLM呼び出し（複数ページで共有）
 
     Args:
         query: ユーザークエリ

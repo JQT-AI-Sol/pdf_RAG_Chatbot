@@ -1054,7 +1054,38 @@ def main_area():
                                     # フォールバック: 画像ベースの表示
                                     st.warning("streamlit-pdf-viewerが利用できません。画像表示にフォールバックします。")
 
-                                    # 最大3列でページを表示
+                                    # 全ページの画像を並列生成（高速化）
+                                    logger.info(f"📸 [HISTORY] Rendering {len(pages)} pages in parallel")
+                                    with ThreadPoolExecutor(max_workers=5) as executor:
+                                        future_to_page = {
+                                            executor.submit(
+                                                extract_page_with_highlight,
+                                                source_file=source_file,
+                                                page_number=page_info["page_number"],
+                                                query=user_query,
+                                                _vector_store=st.session_state.vector_store,
+                                                _rag_engine=st.session_state.rag_engine,
+                                                _vision_analyzer=st.session_state.vision_analyzer,
+                                                dpi=150,
+                                                target_width=1000,
+                                            ): page_info
+                                            for page_info in pages
+                                        }
+
+                                        # 結果を収集
+                                        page_images = {}
+                                        for future in as_completed(future_to_page):
+                                            page_info = future_to_page[future]
+                                            page_num = page_info["page_number"]
+                                            try:
+                                                image = future.result()
+                                                page_images[page_num] = image
+                                                logger.info(f"✅ [HISTORY] Rendered page {page_num}")
+                                            except Exception as e:
+                                                logger.error(f"❌ [HISTORY] Failed to render page {page_num}: {e}")
+                                                page_images[page_num] = None
+
+                                    # 最大3列でページを表示（順序を保って）
                                     cols_per_row = min(3, len(pages))
                                     for i in range(0, len(pages), cols_per_row):
                                         cols = st.columns(cols_per_row)
@@ -1063,24 +1094,7 @@ def main_area():
                                             score = page_info.get("score")
 
                                             with cols[col_idx]:
-                                                # ハイライト付き画像を取得
-                                                logger.info(
-                                                    f"📸 [HISTORY] About to call extract_page_with_highlight: {source_file} page {page_num}"
-                                                )
-                                                image = extract_page_with_highlight(
-                                                    source_file=source_file,
-                                                    page_number=page_num,
-                                                    query=user_query,
-                                                    _vector_store=st.session_state.vector_store,
-                                                    _rag_engine=st.session_state.rag_engine,
-                                                    _vision_analyzer=st.session_state.vision_analyzer,
-                                                    dpi=150,
-                                                    target_width=1000,
-                                                )
-                                                logger.info(
-                                                    f"📸 [HISTORY] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}"
-                                                )
-
+                                                image = page_images.get(page_num)
                                                 if image:
                                                     # キャプション作成
                                                     caption = f"ページ {page_num}"
@@ -1359,7 +1373,38 @@ def main_area():
                                             "streamlit-pdf-viewerが利用できません。画像表示にフォールバックします。"
                                         )
 
-                                        # 最大3列でページを表示
+                                        # 全ページの画像を並列生成（高速化）
+                                        logger.info(f"📸 [NEW ANSWER] Rendering {len(pages)} pages in parallel")
+                                        with ThreadPoolExecutor(max_workers=5) as executor:
+                                            future_to_page = {
+                                                executor.submit(
+                                                    extract_page_with_highlight,
+                                                    source_file=source_file,
+                                                    page_number=page_info["page_number"],
+                                                    query=question,  # 検索クエリをハイライト
+                                                    _vector_store=st.session_state.vector_store,
+                                                    _rag_engine=st.session_state.rag_engine,
+                                                    _vision_analyzer=st.session_state.vision_analyzer,
+                                                    dpi=150,
+                                                    target_width=1000,
+                                                ): page_info
+                                                for page_info in pages
+                                            }
+
+                                            # 結果を収集
+                                            page_images = {}
+                                            for future in as_completed(future_to_page):
+                                                page_info = future_to_page[future]
+                                                page_num = page_info["page_number"]
+                                                try:
+                                                    image = future.result()
+                                                    page_images[page_num] = image
+                                                    logger.info(f"✅ [NEW ANSWER] Rendered page {page_num}")
+                                                except Exception as e:
+                                                    logger.error(f"❌ [NEW ANSWER] Failed to render page {page_num}: {e}")
+                                                    page_images[page_num] = None
+
+                                        # 最大3列でページを表示（順序を保って）
                                         cols_per_row = min(3, len(pages))
                                         for i in range(0, len(pages), cols_per_row):
                                             cols = st.columns(cols_per_row)
@@ -1368,24 +1413,7 @@ def main_area():
                                                 score = page_info.get("score")
 
                                                 with cols[col_idx]:
-                                                    # ハイライト付き画像を取得
-                                                    logger.info(
-                                                        f"📸 [NEW ANSWER] About to call extract_page_with_highlight: {source_file} page {page_num}"
-                                                    )
-                                                    image = extract_page_with_highlight(
-                                                        source_file=source_file,
-                                                        page_number=page_num,
-                                                        query=question,  # 検索クエリをハイライト
-                                                        _vector_store=st.session_state.vector_store,
-                                                        _rag_engine=st.session_state.rag_engine,
-                                                        _vision_analyzer=st.session_state.vision_analyzer,
-                                                        dpi=150,
-                                                        target_width=1000,
-                                                    )
-                                                    logger.info(
-                                                        f"📸 [NEW ANSWER] extract_page_with_highlight returned: {type(image).__name__ if image else 'None'}"
-                                                    )
-
+                                                    image = page_images.get(page_num)
                                                     if image:
                                                         # キャプション作成
                                                         caption = f"ページ {page_num}"
