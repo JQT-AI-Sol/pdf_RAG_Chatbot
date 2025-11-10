@@ -280,6 +280,8 @@ def sidebar():
 
 def process_documents(uploaded_files, category):
     """ドキュメントファイル（PDF、Word、Excel）を処理"""
+    import gc
+
     # カテゴリーはSupabaseのregistered_pdfsテーブルに自動保存されるため、
     # ローカルファイルへの保存は不要
 
@@ -514,6 +516,11 @@ def process_documents(uploaded_files, category):
                         else:
                             failed_images.append(result)
 
+                # ThreadPoolExecutor終了後、futuresを明示的に削除
+                del futures
+                gc.collect()
+                logging.debug("ThreadPoolExecutor futures cleaned up")
+
                 # 解析結果の集計
                 success_count = len(analyzed_images)
                 failed_count = len(failed_images)
@@ -596,12 +603,38 @@ def process_documents(uploaded_files, category):
             status_text.text(completion_msg)
             progress_bar.progress((i + 1) / len(uploaded_files))
 
+            # メモリ解放: 大きなオブジェクトを明示的に削除
+            del doc_bytes
+            del doc_result
+            if 'analyzed_images' in locals():
+                del analyzed_images
+            if 'text_embeddings' in locals():
+                del text_embeddings
+            if 'image_embeddings' in locals():
+                del image_embeddings
+
+            # ガベージコレクション強制実行（連続アップロード時のメモリ圧迫を防ぐ）
+            gc.collect()
+            logging.info(f"Memory cleanup completed for {uploaded_file.name}")
+
         except Exception as e:
             st.sidebar.error(f"エラー ({uploaded_file.name}): {str(e)}")
             logging.error(f"Error processing {uploaded_file.name}: {e}", exc_info=True)
+
+            # エラー時もメモリ解放
+            gc.collect()
             continue
 
     status_text.success("✅ すべてのPDFの処理が完了しました！")
+
+    # 最終的なメモリクリーンアップ
+    # Streamlitキャッシュをクリア（PDFレンダリングキャッシュなど）
+    st.cache_data.clear()
+    logging.info("Streamlit cache cleared")
+
+    # ガベージコレクション強制実行
+    gc.collect()
+    logging.info("All documents processed, final memory cleanup completed")
 
     # ファイルアップローダーをリセット
     st.session_state.uploader_key += 1
