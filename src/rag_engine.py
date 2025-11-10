@@ -515,7 +515,24 @@ class RAGEngine:
 
         # Gemini API呼び出し
         response = self.gemini_model.generate_content(content_parts)
-        return response.text
+
+        # レスポンスが有効なPartを持っているかチェック
+        try:
+            if hasattr(response, 'parts') and response.parts:
+                return response.text
+            else:
+                # Partが空の場合
+                finish_reason = getattr(response, 'finish_reason', None)
+                logger.error(f"Gemini returned empty response. finish_reason: {finish_reason}")
+
+                # 安全フィルターのチェック
+                if hasattr(response, 'safety_ratings'):
+                    logger.error(f"Safety ratings: {response.safety_ratings}")
+
+                return "申し訳ございません。回答の生成中にエラーが発生しました。画像の内容が処理できなかった可能性があります。"
+        except Exception as e:
+            logger.error(f"Error accessing Gemini response: {e}")
+            return "申し訳ございません。回答の生成中にエラーが発生しました。"
 
     def query_stream(self, question: str, category: Optional[str] = None, model_type: str = "openai", chat_history: Optional[List[Dict[str, str]]] = None, uploaded_images: Optional[List] = None):
         """
@@ -776,12 +793,37 @@ class RAGEngine:
         # Gemini APIストリーミング呼び出し
         logger.debug("Starting Gemini streaming...")
         response = self.gemini_model.generate_content(content_parts, stream=True)
+        has_content = False
         for chunk in response:
-            if chunk.text:
-                yield {
-                    "type": "chunk",
-                    "content": chunk.text,
-                }
+            try:
+                # chunkが有効なPartを持っているかチェック
+                if hasattr(chunk, 'parts') and chunk.parts:
+                    if chunk.text:
+                        has_content = True
+                        yield {
+                            "type": "chunk",
+                            "content": chunk.text,
+                        }
+                else:
+                    # Partが空の場合はfinish_reasonをログ
+                    finish_reason = getattr(chunk, 'finish_reason', None)
+                    logger.warning(f"Gemini chunk has no valid parts. finish_reason: {finish_reason}")
+
+                    # 安全フィルターのチェック
+                    if hasattr(chunk, 'safety_ratings'):
+                        logger.warning(f"Safety ratings: {chunk.safety_ratings}")
+            except Exception as e:
+                logger.error(f"Error processing Gemini chunk: {e}")
+                continue
+
+        if not has_content:
+            error_msg = "Gemini returned empty response. This may be due to content filtering or API issues."
+            logger.error(error_msg)
+            yield {
+                "type": "error",
+                "content": "申し訳ございません。回答の生成中にエラーが発生しました。画像の内容が処理できなかった可能性があります。",
+            }
+
         logger.debug("Gemini streaming completed")
 
     def get_top_reference_pages(
