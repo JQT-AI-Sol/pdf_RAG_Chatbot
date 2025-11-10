@@ -233,7 +233,7 @@ pdf_highlighting:
     embedding_threshold: 0.5
     max_candidates: 20
     max_final: 8
-    use_llm_refinement: true
+    use_llm_refinement: false  # LLM精査を一時的に無効化
     fallback_to_keyword: true
   keyword:
     min_length: 2
