@@ -611,14 +611,18 @@ def create_pdf_annotations_hybrid(
 
                     # Stage 4: 座標を取得してアノテーション生成
                     page_height = page.height
+                    words = page.extract_words()
+                    logger.info(f"   📍 Page {page_num}: extracted {len(words)} words from PDF")
+
                     for sent in selected_sentences:
                         # 文のテキストから座標を検索
-                        words = page.extract_words()
+                        logger.debug(f"   Looking for: {sent['text'][:100]}...")
                         positions = find_text_positions_in_words(
                             sent["text"],
                             words,
                             page_num
                         )
+                        logger.info(f"   📍 Found {len(positions)} position(s) for sentence")
 
                         # アノテーションに変換
                         for pos in positions:
