@@ -93,10 +93,15 @@ class PDFProcessor:
 
                 if table_bboxes and self.pdf_config.get("exclude_tables_from_page_text", True):
                     # 表の領域をページから除外
-                    for bbox in table_bboxes:
-                        filtered_page = filtered_page.outside_bbox(bbox)
-                    text = filtered_page.extract_text() or ""
-                    logger.debug(f"Page {page_num}: Excluded {len(table_bboxes)} table regions from page text")
+                    try:
+                        for bbox in table_bboxes:
+                            filtered_page = filtered_page.outside_bbox(bbox)
+                        text = filtered_page.extract_text() or ""
+                        logger.debug(f"Page {page_num}: Excluded {len(table_bboxes)} table regions from page text")
+                    except Exception as bbox_error:
+                        # バウンディングボックスエラーの場合は表除外をスキップ
+                        logger.warning(f"Page {page_num}: Failed to exclude table regions ({bbox_error}), extracting full page text")
+                        text = page.extract_text() or ""
                 else:
                     # 通常のテキスト抽出
                     text = page.extract_text()
