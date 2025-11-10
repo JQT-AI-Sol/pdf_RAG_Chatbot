@@ -146,9 +146,6 @@ def sidebar():
     st.sidebar.markdown("---")
     st.sidebar.title("📁 ドキュメント管理")
 
-    # バージョン情報表示（デバッグ用）
-    st.sidebar.caption(f"🔧 Streamlit: {st.__version__}")
-
     # Vision Analyzer警告表示
     if st.session_state.get("vision_disabled", False):
         st.sidebar.warning(
