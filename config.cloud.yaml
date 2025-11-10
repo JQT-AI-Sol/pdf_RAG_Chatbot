@@ -230,9 +230,9 @@ pdf_highlighting:
     max_keywords: 10
     min_keyword_length: 2
   hybrid:
-    embedding_threshold: 0.7
-    max_candidates: 10
-    max_final: 5
+    embedding_threshold: 0.5
+    max_candidates: 20
+    max_final: 8
     use_llm_refinement: true
     fallback_to_keyword: true
   keyword:
@@ -275,7 +275,7 @@ reranking:
 # BM25ハイブリッド検索設定
 hybrid_search:
   enabled: true
-  alpha: 0.7
+  alpha: 0.5  # 0.7→0.5（キーワード重視）
 
 # キャッシュ設定
 cache:
