@@ -1005,8 +1005,8 @@ def main_area():
                                             caption += f" (関連度: {score:.3f})"
                                         st.markdown(f"**{caption}**")
 
-                                        with st.expander("📝 内容プレビュー"):
-                                            st.markdown(page_info.get("content_preview", ""))
+                                        st.markdown("**📝 内容プレビュー:**")
+                                        st.markdown(page_info.get("content_preview", ""))
 
                                 elif STREAMLIT_PDF_VIEWER_AVAILABLE:
                                     # PDFファイルの場合：pdf_viewerを使用して各ページを個別に表示
@@ -1062,8 +1062,8 @@ def main_area():
                                                         )
 
                                                         # 内容プレビュー
-                                                        with st.expander("📝 内容プレビュー"):
-                                                            st.text(page_info.get("content_preview", ""))
+                                                        st.markdown("**📝 内容プレビュー:**")
+                                                        st.text(page_info.get("content_preview", ""))
                                         else:
                                             st.error(f"PDFファイルが見つかりません: {source_file}")
 
@@ -1111,8 +1111,8 @@ def main_area():
                                                     st.image(image, caption=caption, use_container_width=True)
 
                                                     # 内容プレビュー
-                                                    with st.expander("📝 内容プレビュー"):
-                                                        st.text(page_info.get("content_preview", ""))
+                                                    st.markdown("**📝 内容プレビュー:**")
+                                                    st.text(page_info.get("content_preview", ""))
                                                 else:
                                                     st.warning(f"ページ {page_num} の画像を取得できませんでした")
 
@@ -1308,8 +1308,8 @@ def main_area():
                                                 caption += f" (関連度: {score:.3f})"
                                             st.markdown(f"**{caption}**")
 
-                                            with st.expander("📝 内容プレビュー"):
-                                                st.text(page_info.get("content_preview", ""))
+                                            st.markdown("**📝 内容プレビュー:**")
+                                            st.text(page_info.get("content_preview", ""))
 
                                     elif STREAMLIT_PDF_VIEWER_AVAILABLE:
                                         # PDFファイルの場合：pdf_viewerを使用して各ページを個別に表示
@@ -1365,8 +1365,8 @@ def main_area():
                                                             )
 
                                                             # 内容プレビュー
-                                                            with st.expander("📝 内容プレビュー"):
-                                                                st.text(page_info.get("content_preview", ""))
+                                                            st.markdown("**📝 内容プレビュー:**")
+                                                            st.text(page_info.get("content_preview", ""))
                                             else:
                                                 st.error(f"PDFファイルが見つかりません: {source_file}")
 
@@ -1416,8 +1416,8 @@ def main_area():
                                                         st.image(image, caption=caption, use_container_width=True)
 
                                                         # 内容プレビュー
-                                                        with st.expander("📝 内容プレビュー"):
-                                                            st.text(page_info.get("content_preview", ""))
+                                                        st.markdown("**📝 内容プレビュー:**")
+                                                        st.text(page_info.get("content_preview", ""))
                                                     else:
                                                         st.warning(f"ページ {page_num} の画像を取得できませんでした")
 
