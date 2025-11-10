@@ -243,6 +243,11 @@ class RAGEngine:
                 extra={"top_rerank_scores": [s for _, s in reranked_indices_scores[:3]]}
             )
 
+            # デバッグ: Reranking後のチャンク内容をログ出力
+            for i, result in enumerate(reranked_results[:3]):  # 上位3件のみ
+                content_preview = result.get("content", "")[:200]
+                logger.info(f"  Reranked #{i+1}: page={result.get('page_number')}, score={result.get('rerank_score', 0):.3f}, preview={content_preview}...")
+
             return reranked_results
 
         except Exception as e:
