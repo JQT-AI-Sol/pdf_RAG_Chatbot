@@ -270,7 +270,7 @@ chunking:
 reranking:
   model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   top_k_initial: 10
-  top_k_final: 5
+  top_k_final: 10  # 5→10に増加（重要なチャンクの除外を防ぐ）
 
 # BM25ハイブリッド検索設定
 hybrid_search:
