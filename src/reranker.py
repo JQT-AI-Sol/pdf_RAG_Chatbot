@@ -37,12 +37,23 @@ class Reranker:
         logger.info(f"Initializing Reranker with model: {model_name}")
         try:
             import torch
-            # Determine device (CPU or GPU)
+            import os
+
+            # Disable meta device initialization to avoid "copy out of meta tensor" error
+            os.environ['TRANSFORMERS_OFFLINE'] = '0'
+
+            # Determine device
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             logger.info(f"Using device: {device}")
 
-            # Initialize CrossEncoder with explicit device
-            self.model = CrossEncoder(model_name, device=device)
+            # Initialize CrossEncoder without device parameter (auto-detection)
+            # Then move to target device if needed
+            self.model = CrossEncoder(model_name, max_length=512)
+
+            # Move model to target device if not already there
+            if hasattr(self.model, 'model') and hasattr(self.model.model, 'to'):
+                self.model.model.to(device)
+
             logger.info("Reranker initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Reranker: {e}")
