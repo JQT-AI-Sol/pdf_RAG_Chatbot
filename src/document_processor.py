@@ -306,6 +306,25 @@ def convert_office_to_pdf(
         # Windows/Linux両対応
         libreoffice_cmd = 'soffice' if os.name == 'nt' else 'libreoffice'
 
+        # ファイルタイプに応じて適切なPDFエクスポートフィルタを選択
+        suffix = office_path.suffix.lower()
+        if suffix in ['.pptx', '.ppt']:
+            # PowerPoint: Impressフィルタでテキストレイヤーを保持
+            pdf_filter = 'pdf:impress_pdf_Export'
+            logger.info(f"Using Impress PDF Export filter for PowerPoint")
+        elif suffix in ['.docx', '.doc']:
+            # Word: Writerフィルタでテキストレイヤーを保持
+            pdf_filter = 'pdf:writer_pdf_Export'
+            logger.info(f"Using Writer PDF Export filter for Word")
+        elif suffix in ['.xlsx', '.xls']:
+            # Excel: Calcフィルタ
+            pdf_filter = 'pdf:calc_pdf_Export'
+            logger.info(f"Using Calc PDF Export filter for Excel")
+        else:
+            # デフォルト
+            pdf_filter = 'pdf'
+            logger.warning(f"Using default PDF filter for {suffix}")
+
         result = subprocess.run(
             [
                 libreoffice_cmd,
@@ -313,7 +332,7 @@ def convert_office_to_pdf(
                 '--norestore',  # 以前のセッションを復元しない
                 '--invisible',   # UIを完全に非表示
                 '--nologo',      # スプラッシュ画面を表示しない
-                '--convert-to', 'pdf',
+                '--convert-to', pdf_filter,
                 '--outdir', str(output_dir),
                 str(office_path)
             ],
@@ -331,13 +350,37 @@ def convert_office_to_pdf(
                 with pdfplumber.open(output_path) as pdf:
                     pdf_pages = len(pdf.pages)
 
-                logger.info(f"✅ PDF conversion successful: {output_path}")
-                logger.info(f"   Original pages: {original_pages}, PDF pages: {pdf_pages}")
+                    logger.info(f"✅ PDF conversion successful: {output_path}")
+                    logger.info(f"   Original pages: {original_pages}, PDF pages: {pdf_pages}")
 
-                if original_pages != pdf_pages:
-                    logger.warning(f"⚠️ Page count mismatch! Original: {original_pages}, PDF: {pdf_pages}")
-                    logger.warning(f"   Some pages may have been skipped during conversion")
-                    logger.warning(f"   This may cause missing content in search results")
+                    if original_pages != pdf_pages:
+                        logger.warning(f"⚠️ Page count mismatch! Original: {original_pages}, PDF: {pdf_pages}")
+                        logger.warning(f"   Some pages may have been skipped during conversion")
+                        logger.warning(f"   This may cause missing content in search results")
+
+                    # テキストレイヤーの検証（最初の数ページをチェック）
+                    pages_to_check = min(3, pdf_pages)  # 最初の3ページまでチェック
+                    text_layer_ok = False
+
+                    for i in range(pages_to_check):
+                        page = pdf.pages[i]
+                        text = page.extract_text()
+                        words = page.extract_words()
+
+                        if text and len(text.strip()) > 50 and len(words) > 5:
+                            text_layer_ok = True
+                            logger.info(f"✅ Text layer verified on page {i+1}: {len(text)} chars, {len(words)} words")
+                            break
+
+                    if not text_layer_ok:
+                        logger.warning(f"⚠️⚠️⚠️ TEXT LAYER NOT DETECTED IN CONVERTED PDF! ⚠️⚠️⚠️")
+                        logger.warning(f"   The PDF may have text as images, which will prevent highlighting.")
+                        logger.warning(f"   This can happen with:")
+                        logger.warning(f"   - Complex fonts or special characters")
+                        logger.warning(f"   - Embedded images with text")
+                        logger.warning(f"   - LibreOffice conversion limitations")
+                        logger.warning(f"   Highlighting will use database chunks but may not work properly.")
+
             except Exception as e:
                 logger.warning(f"⚠️ Failed to verify page count: {e}")
 
