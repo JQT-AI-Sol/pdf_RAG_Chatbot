@@ -319,6 +319,7 @@ def process_documents(uploaded_files, category):
             file_type = st.session_state.document_processor.get_file_type(str(doc_path))
             conversion_config = st.session_state.config.get("office_to_pdf_conversion", {})
             converted_pdf_path = None
+            storage_path = None  # 初期化（後でSupabase Storage登録時に使用）
 
             # ExcelはLLM要約で直接処理するため、PDF変換はプレビュー用のみ
             if file_type in ["word", "powerpoint"] and conversion_config.get("enabled", True):
@@ -344,11 +345,11 @@ def process_documents(uploaded_files, category):
                         # Supabase Storageにもアップロード
                         if st.session_state.vector_store.provider == "supabase":
                             try:
-                                st.session_state.vector_store.upload_pdf_to_storage(
+                                storage_path = st.session_state.vector_store.upload_pdf_to_storage(
                                     str(converted_pdf_path), converted_pdf_path.name, category
                                 )
                                 logging.info(
-                                    f"✅ Converted PDF uploaded to Supabase Storage: {converted_pdf_path.name}"
+                                    f"✅ Converted PDF uploaded to Supabase Storage: {converted_pdf_path.name} (path: {storage_path})"
                                 )
                             except Exception as e:
                                 logging.warning(f"⚠️ Failed to upload converted PDF to Supabase Storage: {e}")
@@ -595,20 +596,25 @@ def process_documents(uploaded_files, category):
                     st.sidebar.error(error_msg)
                     logging.error(error_msg)
 
-            # PDFをSupabase Storageにアップロード（Supabaseの場合）
-            storage_path = None
-            if st.session_state.vector_store.provider == "supabase":
+            # ドキュメントをSupabase Storageにアップロード（Supabaseの場合）
+            # Word/PowerPointの場合は変換後のPDFが既にアップロード済みなのでスキップ
+            if st.session_state.vector_store.provider == "supabase" and storage_path is None:
                 try:
-                    storage_path = st.session_state.vector_store.upload_pdf_to_storage(
-                        str(doc_path), uploaded_file.name, category
-                    )
-                    logging.info(f"Document uploaded to Supabase Storage: {storage_path}")
+                    # Word/PowerPoint以外（PDF、Excel、Textなど）の場合、元のファイルをアップロード
+                    if file_type not in ["word", "powerpoint"]:
+                        upload_path = str(doc_path)
+                        upload_filename = uploaded_file.name
+                        storage_path = st.session_state.vector_store.upload_pdf_to_storage(
+                            upload_path, upload_filename, category
+                        )
+                        logging.info(f"Document uploaded to Supabase Storage: {storage_path}")
                 except Exception as e:
-                    logging.warning(f"Failed to upload PDF to Supabase Storage: {e}")
+                    logging.warning(f"Failed to upload document to Supabase Storage: {e}")
                     # ストレージアップロード失敗してもローカルファイルはあるので処理継続
 
             # PDFをregistered_pdfsテーブルに登録（Supabaseの場合）
-            st.session_state.vector_store.register_pdf(uploaded_file.name, category, storage_path)
+            # doc_result["source_file"]を使用（Word/PowerPointの場合は変換後のPDFファイル名）
+            st.session_state.vector_store.register_pdf(doc_result["source_file"], category, storage_path)
 
             # 完了メッセージの作成
             completion_msg = f"✅ {uploaded_file.name}: テキスト {len(doc_result['text_chunks'])}件"
