@@ -407,12 +407,19 @@ def process_documents(uploaded_files, category):
             status_text.text(f"処理中: {uploaded_file.name} (2/?) - テキスト・画像抽出中...")
             try:
                 logging.info(f"Starting document processing for {uploaded_file.name}")
-                # Excelは常に元のファイルで処理（LLM要約）、Word/PowerPointはPDF変換後を使用
-                if file_type == "excel":
+                # ファイルタイプ別の処理戦略:
+                # - Word: 元のdocxから直接テキスト抽出（高速、精度高い）
+                # - PowerPoint: 変換PDFを処理（スライド画像中心）
+                # - Excel: 元のxlsxから直接処理（LLM要約）
+                if file_type == "word":
+                    processing_path = str(doc_path)  # Wordは直接処理
+                    logging.info(f"Processing Word directly from docx (fast text extraction): {processing_path}")
+                elif file_type == "excel":
                     processing_path = str(doc_path)  # Excelは直接処理
                     logging.info(f"Processing Excel directly with LLM summarization: {processing_path}")
-                else:
+                else:  # powerpoint
                     processing_path = str(converted_pdf_path) if converted_pdf_path else str(doc_path)
+                    logging.info(f"Processing PowerPoint from converted PDF: {processing_path}")
                 doc_result = st.session_state.document_processor.process_document(processing_path, category)
 
                 # 変換後のPDFパスをメタデータに追加（プレビュー機能で使用）
