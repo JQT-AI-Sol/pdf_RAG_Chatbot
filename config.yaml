@@ -349,7 +349,7 @@ performance:
 
 # ログ設定
 logging:
-  level: "INFO"  # DEBUG → INFO に変更（処理速度向上）
+  level: "WARNING"  # WARNING以上のみ表示（ERROR、CRITICAL）
   file: "./logs/app.log"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
