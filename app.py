@@ -270,10 +270,8 @@ def sidebar():
                     if st.button(
                         "🗑️", key=delete_key, type="secondary", use_container_width=True, help="ドキュメントを削除"
                     ):
-                        # 削除確認用のセッション状態を設定
-                        st.session_state.delete_target = pdf["source_file"]
-                        st.session_state.show_delete_confirm = True
-                        st.rerun()
+                        # 削除確認ダイアログを表示
+                        confirm_delete_dialog(pdf["source_file"])
     else:
         st.sidebar.info("登録済みドキュメントがありません")
 
@@ -664,12 +662,9 @@ def process_documents(uploaded_files, category):
     st.rerun()
 
 
-def confirm_delete_dialog():
-    """PDF削除の確認ダイアログ（st.dialog互換実装）"""
-    if "delete_target" not in st.session_state:
-        return
-
-    target_file = st.session_state.delete_target
+@st.dialog("PDF削除の確認")
+def confirm_delete_dialog(target_file: str):
+    """PDF削除の確認ダイアログ"""
     pdf_info = st.session_state.pdf_manager.get_pdf_info(target_file)
 
     if pdf_info:
@@ -693,24 +688,12 @@ def confirm_delete_dialog():
                     st.success(result["message"])
                     if result["category_deleted"]:
                         st.info(f"カテゴリー「{pdf_info['category']}」も削除されました（他にPDFがないため）")
-
-                    # セッション状態をクリア
-                    if "delete_target" in st.session_state:
-                        del st.session_state.delete_target
-                    if "show_delete_confirm" in st.session_state:
-                        del st.session_state.show_delete_confirm
-
                     st.rerun()
                 else:
                     st.error(result["message"])
 
         with col2:
             if st.button("❌ キャンセル", use_container_width=True, key="confirm_delete_no"):
-                # セッション状態をクリア
-                if "delete_target" in st.session_state:
-                    del st.session_state.delete_target
-                if "show_delete_confirm" in st.session_state:
-                    del st.session_state.show_delete_confirm
                 st.rerun()
     else:
         st.error("PDFが見つかりませんでした")
@@ -840,10 +823,6 @@ def get_pdf_path_for_preview(source_file: str) -> Path:
 
 def main_area():
     """メインエリアのUI"""
-    # 削除確認ダイアログの表示
-    if st.session_state.get("show_delete_confirm", False):
-        confirm_delete_dialog()
-
     st.title("📚 PDF RAG System")
     st.markdown("---")
 
