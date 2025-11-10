@@ -664,18 +664,16 @@ def process_documents(uploaded_files, category):
     st.rerun()
 
 
-@st.dialog("PDF削除の確認")
 def confirm_delete_dialog():
-    """PDF削除の確認ダイアログ"""
+    """PDF削除の確認ダイアログ（st.dialog互換実装）"""
     if "delete_target" not in st.session_state:
-        st.error("削除対象が指定されていません")
         return
 
     target_file = st.session_state.delete_target
     pdf_info = st.session_state.pdf_manager.get_pdf_info(target_file)
 
     if pdf_info:
-        st.warning(f"以下のPDFとその関連データを削除しますか？")
+        st.warning("⚠️ 以下のPDFとその関連データを削除しますか？")
         st.write(f"**ファイル名**: {pdf_info['source_file']}")
         st.write(f"**カテゴリー**: {pdf_info['category']}")
         st.write(f"**削除されるデータ**:")
@@ -686,7 +684,7 @@ def confirm_delete_dialog():
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ 削除する", type="primary", use_container_width=True):
+            if st.button("✅ 削除する", type="primary", use_container_width=True, key="confirm_delete_yes"):
                 # 削除実行
                 with st.spinner("削除中..."):
                     result = st.session_state.pdf_manager.delete_pdf(target_file)
@@ -707,7 +705,7 @@ def confirm_delete_dialog():
                     st.error(result["message"])
 
         with col2:
-            if st.button("❌ キャンセル", use_container_width=True):
+            if st.button("❌ キャンセル", use_container_width=True, key="confirm_delete_no"):
                 # セッション状態をクリア
                 if "delete_target" in st.session_state:
                     del st.session_state.delete_target
