@@ -431,10 +431,11 @@ class PDFProcessor:
             pdf_path: PDFファイルのパス
 
         Returns:
-            dict: {"images": [...], "table_markdowns": [...]}
+            dict: {"images": [...], "table_markdowns": [...], "table_bboxes": [...]}
         """
         images = []
         table_markdowns = []
+        table_bboxes = []  # Initialize table_bboxes list
         min_size = self.pdf_config.get("min_image_size", 100)
         max_size = self.vision_config.get("max_image_size", 2000)
         pdf_name = Path(pdf_path).stem
