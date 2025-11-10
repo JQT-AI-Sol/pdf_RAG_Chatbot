@@ -994,6 +994,22 @@ def main_area():
                                         pdf_path = get_pdf_path(source_file, st.session_state.vector_store)
 
                                         if pdf_path and pdf_path.exists():
+                                            # 全ページのアノテーションを一度に生成（バッチ処理で高速化）
+                                            from src.pdf_page_renderer import create_pdf_annotations_hybrid
+
+                                            all_page_numbers = [p["page_number"] for p in pages]
+                                            logger.info(f"📸 [HISTORY] Generating annotations for {len(all_page_numbers)} pages at once")
+
+                                            all_annotations = create_pdf_annotations_hybrid(
+                                                pdf_path=pdf_path,
+                                                query=user_query,
+                                                page_numbers=all_page_numbers,
+                                                rag_engine=st.session_state.rag_engine,
+                                                config=st.session_state.config,
+                                                vector_store=st.session_state.vector_store,
+                                                source_file=source_file,
+                                            )
+
                                             # 最大2列でページを表示（グリッドレイアウト維持）
                                             cols_per_row = min(2, len(pages))
                                             for i in range(0, len(pages), cols_per_row):
@@ -1001,6 +1017,9 @@ def main_area():
                                                 for col_idx, page_info in enumerate(pages[i : i + cols_per_row]):
                                                     page_num = page_info["page_number"]
                                                     score = page_info.get("score")
+
+                                                    # このページのアノテーションだけをフィルタリング
+                                                    page_annotations = [a for a in all_annotations if a.get("page") == page_num]
 
                                                     with cols[col_idx]:
                                                         # キャプション作成（画像参照情報を含む）
@@ -1014,26 +1033,13 @@ def main_area():
                                                             image_count = page_info.get("image_count", 0)
                                                             st.caption(f"📊 このページの図表・グラフを参照しています（{image_count}件）")
 
-                                                        # ハイブリッド方式で文単位ハイライト生成
-                                                        from src.pdf_page_renderer import create_pdf_annotations_hybrid
-
-                                                        annotations = create_pdf_annotations_hybrid(
-                                                            pdf_path=pdf_path,
-                                                            query=user_query,
-                                                            page_numbers=[page_num],
-                                                            rag_engine=st.session_state.rag_engine,
-                                                            config=st.session_state.config,
-                                                            vector_store=st.session_state.vector_store,
-                                                            source_file=source_file,
-                                                        )
-
                                                         # PDFビューアーで1ページのみ表示
                                                         logger.info(
-                                                            f"📄 [HISTORY] Displaying page {page_num} with {len(annotations)} annotations"
+                                                            f"📄 [HISTORY] Displaying page {page_num} with {len(page_annotations)} annotations"
                                                         )
                                                         pdf_viewer(
                                                             str(pdf_path),
-                                                            annotations=annotations,
+                                                            annotations=page_annotations,
                                                             pages_to_render=[page_num],  # 該当ページのみ
                                                             height=700,
                                                             render_text=True,
@@ -1311,6 +1317,22 @@ def main_area():
                                             pdf_path = get_pdf_path(source_file, st.session_state.vector_store)
 
                                             if pdf_path and pdf_path.exists():
+                                                # 全ページのアノテーションを一度に生成（バッチ処理で高速化）
+                                                from src.pdf_page_renderer import create_pdf_annotations_hybrid
+
+                                                all_page_numbers = [p["page_number"] for p in pages]
+                                                logger.info(f"📸 [NEW ANSWER] Generating annotations for {len(all_page_numbers)} pages at once")
+
+                                                all_annotations = create_pdf_annotations_hybrid(
+                                                    pdf_path=pdf_path,
+                                                    query=question,
+                                                    page_numbers=all_page_numbers,
+                                                    rag_engine=st.session_state.rag_engine,
+                                                    config=st.session_state.config,
+                                                    vector_store=st.session_state.vector_store,
+                                                    source_file=source_file,
+                                                )
+
                                                 # 最大3列でページを表示（グリッドレイアウト維持）
                                                 cols_per_row = min(2, len(pages))
                                                 for i in range(0, len(pages), cols_per_row):
@@ -1318,6 +1340,9 @@ def main_area():
                                                     for col_idx, page_info in enumerate(pages[i : i + cols_per_row]):
                                                         page_num = page_info["page_number"]
                                                         score = page_info.get("score")
+
+                                                        # このページのアノテーションだけをフィルタリング
+                                                        page_annotations = [a for a in all_annotations if a.get("page") == page_num]
 
                                                         with cols[col_idx]:
                                                             # キャプション作成（画像参照情報を含む）
@@ -1331,26 +1356,13 @@ def main_area():
                                                                 image_count = page_info.get("image_count", 0)
                                                                 st.caption(f"📊 このページの図表・グラフを参照しています（{image_count}件）")
 
-                                                            # ハイブリッド方式で文単位ハイライト生成
-                                                            from src.pdf_page_renderer import create_pdf_annotations_hybrid
-
-                                                            annotations = create_pdf_annotations_hybrid(
-                                                                pdf_path=pdf_path,
-                                                                query=question,
-                                                                page_numbers=[page_num],
-                                                                rag_engine=st.session_state.rag_engine,
-                                                                config=st.session_state.config,
-                                                                vector_store=st.session_state.vector_store,
-                                                                source_file=source_file,
-                                                            )
-
                                                             # PDFビューアーで1ページのみ表示
                                                             logger.info(
-                                                                f"📄 [NEW ANSWER] Displaying page {page_num} with {len(annotations)} annotations"
+                                                                f"📄 [NEW ANSWER] Displaying page {page_num} with {len(page_annotations)} annotations"
                                                             )
                                                             pdf_viewer(
                                                                 str(pdf_path),
-                                                                annotations=annotations,
+                                                                annotations=page_annotations,
                                                                 pages_to_render=[page_num],  # 該当ページのみ
                                                                 height=700,
                                                                 render_text=True,
