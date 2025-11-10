@@ -544,13 +544,22 @@ class PDFProcessor:
                             markdown = self._table_to_markdown(table_data)
 
                             if markdown:
+                                # 表の上にあるタイトルを抽出
+                                table_title = self._extract_table_title(page, table.bbox)
+
+                                # タイトルがある場合は追加
+                                if table_title:
+                                    table_text = f"\n{table_title}\n{markdown}\n"
+                                else:
+                                    table_text = f"\n[表 {table_idx + 1}]\n{markdown}\n"
+
                                 table_markdowns.append({
-                                    "text": f"\n[表 {table_idx + 1}]\n{markdown}\n",
+                                    "text": table_text,
                                     "page_number": page_num,
                                 })
                                 # Markdown化された表のbboxを記録
                                 table_bboxes.append(table.bbox)
-                                logger.debug(f"Converted simple table {table_idx} to Markdown on page {page_num}")
+                                logger.debug(f"Converted simple table {table_idx} to Markdown on page {page_num}, title: {table_title[:50] if table_title else 'None'}")
 
                     except Exception as e:
                         logger.warning(f"Failed to process table {table_idx} from page {page_num}: {e}")
@@ -702,6 +711,67 @@ class PDFProcessor:
             logger.error(f"Error extracting images from page {page_num}: {e}")
 
         return {"images": images, "table_markdowns": table_markdowns, "table_bboxes": table_bboxes}
+
+    def _extract_table_title(self, page, table_bbox, max_lines=3):
+        """
+        表の上にあるタイトルテキストを抽出
+
+        Args:
+            page: pdfplumber Page object
+            table_bbox: 表のbounding box (x0, top, x1, bottom)
+            max_lines: 抽出する最大行数
+
+        Returns:
+            str: 表のタイトル（なければ空文字列）
+        """
+        try:
+            # 表の上端のy座標
+            table_top = table_bbox[1]
+
+            # ページの全単語を取得
+            words = page.extract_words()
+
+            if not words:
+                return ""
+
+            # 表の上にある単語をフィルタ（y座標が表のtop未満）
+            # バッファ: 表の上100px以内のテキストのみ対象
+            words_above = [
+                w for w in words
+                if w['bottom'] < table_top and w['bottom'] > table_top - 100
+            ]
+
+            if not words_above:
+                return ""
+
+            # y座標でグループ化（同じ行の単語をまとめる）
+            lines = {}
+            for word in words_above:
+                # y座標を丸めて行をグループ化（±2pxの誤差を許容）
+                line_y = round(word['top'] / 2) * 2
+                if line_y not in lines:
+                    lines[line_y] = []
+                lines[line_y].append(word)
+
+            # 表に最も近い行から順に並べる
+            sorted_lines = sorted(lines.items(), key=lambda x: -x[0])  # y座標降順（下から上）
+
+            # 最大max_lines行まで抽出
+            title_lines = []
+            for i, (y, line_words) in enumerate(sorted_lines[:max_lines]):
+                # x座標でソート（左から右）
+                line_words.sort(key=lambda w: w['x0'])
+                line_text = ' '.join([w['text'] for w in line_words])
+
+                # 「表」や「Table」で始まる行、または「単位」を含む行は優先的に採用
+                if i == 0 or '表' in line_text or 'Table' in line_text or '単位' in line_text:
+                    title_lines.insert(0, line_text)  # 上の行を先頭に追加
+
+            return '\n'.join(reversed(title_lines))  # 上から下の順に戻す
+
+        except Exception as e:
+            logger.warning(f"Failed to extract table title: {e}")
+            return ""
 
     def save_extracted_image(self, image: Image.Image, output_path: str) -> bool:
         """
