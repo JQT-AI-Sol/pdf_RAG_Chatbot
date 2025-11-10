@@ -360,7 +360,7 @@ performance:
 
 # ログ設定
 logging:
-  level: "WARNING"  # WARNING以上のみ表示（ERROR、CRITICAL）
+  level: "INFO"  # Cohere Rerankingデバッグ用に一時的にINFOに戻す
   file: "./logs/app.log"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
