@@ -984,10 +984,8 @@ class VectorStore:
         if self.provider == 'supabase':
             try:
                 result = self.client.table(self.text_table).select(
-                    'content, page_number, chunk_index'
-                ).eq('source_file', source_file).eq('page_number', page_number).order(
-                    'chunk_index'
-                ).execute()
+                    'content, page_number'
+                ).eq('source_file', source_file).eq('page_number', page_number).execute()
 
                 logger.debug(f"Retrieved {len(result.data)} chunks for {source_file} page {page_number}")
                 return result.data
